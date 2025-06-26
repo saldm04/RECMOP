@@ -74,33 +74,6 @@ def trova_shp_in_regione(regione: str) -> str:
     return trova_file_in_regione(regione, ".shp")
 
 
-def estrai_geometrie_sezioni(regione: str) -> gpd.GeoDataFrame:
-    """
-    Restituisce un GeoDataFrame con le geometrie delle sezioni censuarie
-    e la colonna SEZ2011 per tutti i comuni nella regione.
-    """
-    shp_path = trova_shp_in_regione(regione)
-    gdf = gpd.read_file(shp_path)
-
-    # Identifica la colonna SEZ2011 e la geometria
-    col_map = {c.upper(): c for c in gdf.columns}
-    col_sez = col_map.get('SEZ2011')
-    if not col_sez:
-        raise KeyError("Colonna SEZ2011 mancante nel shapefile")
-
-    geom_col = gdf.geometry.name
-
-    # Seleziona solo geometria e SEZ2011 per tutta la regione
-    gdf_sezioni = gdf[[geom_col, col_sez]].copy()
-
-    # Rinomina la colonna geometria se necessario
-    if geom_col != 'geometry':
-        gdf_sezioni = gdf_sezioni.rename(columns={geom_col: 'geometry'}).set_geometry('geometry')
-
-    logger.info(f"Estratte {len(gdf_sezioni)} sezioni in {regione}")
-    return gdf_sezioni
-
-
 if __name__ == '__main__':
     # Esempio di utilizzo
     df = get_dati_basi_territoriali("Campania")
