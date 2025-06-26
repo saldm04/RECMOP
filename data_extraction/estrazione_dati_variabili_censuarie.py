@@ -8,9 +8,13 @@ from utils import safe_name
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Costanti
-BASE_INPUT_DIR = os.path.join("..", "Istat", "Variabili_Censuarie", "Sezioni_di_Censimento")
-OUTPUT_DIR = "../Data_Collection/csv_tables-fase1"
+# Base directory (cartella di questo file)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Costanti con path assoluti
+BASE_INPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Istat", "Variabili_Censuarie", "Sezioni_di_Censimento"))
+OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "csv_tables-fase1"))
+
 COLONNE_RICHIESTE = [
     'SEZ2011', 'COMUNE', 'PROVINCIA', 'P1', 'E8', 'E9',
     'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'E16', 'A44'

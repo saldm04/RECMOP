@@ -69,46 +69,15 @@ import os
 import re
 import pandas as pd
 
-# ==================== FUNZIONI PLACEHOLDER ====================
+from utils import get_pannelli, get_regione_from_provincia
 
-def get_regione_from_provincia(provincia):
-    # Placeholder
-    return "campania"
+from data_extraction_siape.siape_zc_range import run_estrazione_siape
+from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energetica, refresh_offerta_energetica
+from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica
+from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
+from model_builder.creazione_peb_neb import crea_peb_neb
+from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb
 
-def run_estrazione_siape():
-    print("Estrazione SIAPE avviata...")
-
-def refresh_join_data(regione):
-    print(f"Aggiornamento lista comuni e zone climatiche per la regione {regione}...")
-
-def calcola_domanda_energetica(comune, provincia):
-    print(f"Calcolo domanda energetica per {comune}, {provincia}...")
-
-def get_pannelli():
-    # Simulo un DataFrame di esempio
-    data = {
-        'Marca': ['Sonnenkraft', 'FuturaSun'],
-        'Modello': ['SKR500', 'FU300'],
-        'Potenza(Wp)': [500, 300],
-        'Efficienza(%)': [19.5, 18.2],
-        'Tecnologia': ['Monocristallino', 'Policristallino'],
-        'Prezzo': [250, 180],
-        'Superficie': [2.5, 1.8],
-        'Superficie+30%': [3.25, 2.34]
-    }
-    return pd.DataFrame(data)
-
-def refresh_offerta_energetica(provincia, comune, indice_pannello):
-    print(f"Ricalcolo offerta energetica per {provincia}, {comune}, pannello {indice_pannello}...")
-
-def calcola_offerta_energetica(provincia, comune, indice_pannello):
-    print(f"Calcolo offerta energetica per {provincia}, {comune}, pannello {indice_pannello}...")
-
-def crea_peb_neb(provincia, comune):
-    print(f"Creazione shp di input per {provincia}, {comune}...")
-
-def ciclo_interazione_peb_neb(provincia, comune):
-    print(f"Ciclo interazione e creazione shp di output per {provincia}, {comune}...")
 
 # ==================== FUNZIONI DI CONTROLLO INPUT ====================
 
@@ -127,6 +96,8 @@ def normalizza_DSM():
         print("Formato errato! Riprova.")
 
 # ==================== MAIN ====================
+
+import os
 
 def main():
     # Input cartella fabbricati
@@ -150,10 +121,14 @@ def main():
 
     # Selezione pannello
     pannelli_df = get_pannelli()
+
+    # Normalizzazione intestazioni colonna
+    pannelli_df.columns = pannelli_df.columns.str.strip().str.replace('\ufeff', '')
+
     print("\nSeleziona pannello che preferisci:")
     for idx, row in pannelli_df.iterrows():
         print(f"{idx+1}) {row['Marca']:15} {row['Modello']:12} {row['Potenza(Wp)']:>8}  {row['Efficienza(%)']:>8}  "
-              f"{row['Tecnologia']:15} {row['Prezzo']:>6}  {row['Superficie']:>5}  {row['Superficie+30%']:>5}")
+              f"{row['Tecnologia']:15} {row['Prezzo']:>6}  {row['Superficie']:>5}  {row['Dimensione']:>5}")
 
     while True:
         try:
@@ -165,19 +140,20 @@ def main():
         print("Valore non valido! Riprova.")
 
     # Controllo esistenza tif irradiance
-    tif_path = f"/offerta/grass_gis/irradiance_tif/irradianza_annua_{provincia}_{comune}.tif"
+    tif_path = os.path.join("offerta", "grass_gis", "irradiance_tif", f"irradianza_annua_{provincia}_{comune}.tif")
     if os.path.exists(tif_path):
         risposta_ricalcolo = input("Vuoi ricalcolare il tif dell'irradianza annua? (SI/NO): ").strip().upper()
         if risposta_ricalcolo == 'SI':
             refresh_offerta_energetica(provincia, comune, indice_pannello)
         else:
-            calcola_offerta_energetica(provincia, comune, indice_pannello)
+            calcolo_offerta_energetica(provincia, comune, indice_pannello)
     else:
-        calcola_offerta_energetica(provincia, comune, indice_pannello)
+        calcolo_offerta_energetica(provincia, comune, indice_pannello)
 
     # Creazione e interazione PEB/NEB
     crea_peb_neb(provincia, comune)
     ciclo_interazione_peb_neb(provincia, comune)
+
 
 # ==================== AVVIO ====================
 

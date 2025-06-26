@@ -73,16 +73,27 @@ def get_regione_from_provincia(provincia: str) -> str:
     return mappa_provincia_regione[provincia]
 
 def get_pannelli() -> pd.DataFrame:
-    """
-    Restituisce il DataFrame dei pannelli solari.
-    """
-
     pannelli_path = os.path.join('offerta', 'panel', 'panels.csv')
     if not os.path.isfile(pannelli_path):
         raise FileNotFoundError(f"File pannelli non trovato: {pannelli_path}")
 
-    df_pannelli = pd.read_csv(pannelli_path, sep=';', encoding='utf-8-sig')
+    df_pannelli = pd.read_csv(pannelli_path, sep=',', encoding='utf-8-sig')
     if df_pannelli.empty:
         raise ValueError("Il file dei pannelli è vuoto o non contiene dati validi.")
 
+    # Stampa intestazioni originali per debug
+    print("Colonne lette:", df_pannelli.columns.tolist())
+
+    # Normalizza intestazioni
+    df_pannelli.columns = (
+        df_pannelli.columns
+        .str.strip()
+        .str.replace('\ufeff', '')  # toglie eventuale BOM
+        .str.replace(r'\s*\((.*?)\)', lambda m: f"({m.group(1)})", regex=True)
+    )
+
+    # Stampa intestazioni normalizzate
+    print("Colonne normalizzate:", df_pannelli.columns.tolist())
+
     return df_pannelli
+

@@ -99,12 +99,13 @@ def query_catasto_point(x: float, y: float) -> dict:
 # ========================
 # GESTIONE PERCORSI
 # ========================
-OUTPUT_BASE_DIR = os.path.join('..', 'Data_Collection', 'shapefiles')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_BASE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "shapefiles"))
 
 def get_output_paths(provincia: str, comune: str) -> tuple:
     """
     Restituisce la directory e il percorso completo dello shapefile per provincia e comune (in minuscolo, senza spazi).
-    ../Data_Collection/shapefiles/[provincia]_[comune]/dati_catasto_[provincia]_[comune]/dati_catasto_[provincia]_[comune].shp
+    [assoluto]/Data_Collection/shapefiles/[provincia]_[comune]/dati_catasto_[provincia]_[comune]/dati_catasto_[provincia]_[comune].shp
     """
     provincia = provincia.lower().replace(" ", "_")
     comune = comune.lower().replace(" ", "_")
@@ -114,6 +115,7 @@ def get_output_paths(provincia: str, comune: str) -> tuple:
     shp_name = f"{dir_name}.shp"
     shp_path = os.path.join(dir_path, shp_name)
     return dir_path, shp_path
+
 
 # ========================
 # SALVA SHAPEFILE

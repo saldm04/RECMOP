@@ -4,13 +4,18 @@ import requests
 import pandas as pd
 
 # Impostazione logging
+import os
+import logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Costanti
 URL_SIAPE = "https://siape.enea.it/api/v1/aggr-data"
-OUTPUT_DIR = "../Data_Collection/csv_tables-fase1"
+
+OUTPUT_DIR = os.path.abspath("../Data_Collection/csv_tables-fase1")
 OUTPUT_FILENAME = "epgl_nren_ren_co2_tabella_siape_zc_range.csv"
+
 ZONES = ['A', 'B', 'C', 'D', 'E', 'F']
 PERIODS = [
     (-1000000000, 1944),
@@ -28,6 +33,7 @@ PERIOD_LABELS = {
     4: 'kE16',
     5: 'k2015',
 }
+
 
 HEADERS = {
     'Accept': 'application/json, text/javascript, */*; q=0.01',

@@ -8,7 +8,7 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Costanti
+# Costanti URL
 ATTO_URL = "https://www.normattiva.it/uri-res/N2Ls?urn:nir:presidente.repubblica:decreto:1993-08-26;412"
 BASE_ARTICOLO_URL = (
     "https://www.normattiva.it/atto/caricaArticolo?"
@@ -18,7 +18,9 @@ BASE_ARTICOLO_URL = (
     "art.dataPubblicazioneGazzetta=1993-10-14&art.progressivo="
 )
 NUM_ARTICOLI = 4
-OUTPUT_DIR = "../Data_Collection/csv_tables-fase1"
+
+# Path assoluto alla directory di output
+OUTPUT_DIR = os.path.abspath(os.path.join('..', 'Data_Collection', 'csv_tables-fase1'))
 OUTPUT_FILENAME = "dati_normattiva.csv"
 
 
@@ -58,12 +60,12 @@ def estrai_dati_normattiva() -> pd.DataFrame:
                     riga.strip()
                     for riga in dati_grezzi
                     if riga.strip()
-                    and "parte" not in riga.lower()
-                    and "aggiornamenti" not in riga.lower()
-                    and "Testo in vigore" not in riga
-                    and "articolo precedente" not in riga.lower()
-                    and "articolo successivo" not in riga.lower()
-                    and not (progressivo == 1 and "pr z gr-g alt comune" in riga)
+                       and "parte" not in riga.lower()
+                       and "aggiornamenti" not in riga.lower()
+                       and "Testo in vigore" not in riga
+                       and "articolo precedente" not in riga.lower()
+                       and "articolo successivo" not in riga.lower()
+                       and not (progressivo == 1 and "pr z gr-g alt comune" in riga)
                 ]
 
                 dati_finali.extend(dati_puliti)
@@ -72,7 +74,7 @@ def estrai_dati_normattiva() -> pd.DataFrame:
 
         browser.close()
 
-    # Costruzione del DataFrame dai dati finali
+    # Costruzione DataFrame dai dati estratti
     records = []
     righe_scartate = 0
 

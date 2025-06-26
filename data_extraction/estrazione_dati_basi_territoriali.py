@@ -9,9 +9,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Costanti
-BASE_INPUT_DIR = os.path.join("..", "Istat", "Regioni")
-OUTPUT_DIR = os.path.join("..", "Data_Collection", "csv_tables-fase1")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Ora costruisci i percorsi assoluti partendo da BASE_DIR
+BASE_INPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Istat", "Regioni"))
+OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "csv_tables-fase1"))
+
 CAMPI_ESTRATTI = ['COD_REG', 'COD_ISTAT', 'PRO_COM', 'SEZ2011', 'SEZ', 'COD_LOC', 'TIPO_LOC']
+
 
 
 def trova_file_in_regione(regione: str, extension: str) -> str:

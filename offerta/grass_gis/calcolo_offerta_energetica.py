@@ -19,20 +19,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger('irradiance_pipeline')
 
+# Directory base del progetto (una volta per tutte)
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 # Carica configurazioni da .env
-load_dotenv(os.path.join('..', '..', '.env'))
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 GRASS_BASE = os.getenv('GRASS_BASE')
 GRASS_GISDB = os.getenv('GRASS_GISDB')
 GRASS_LOCATION = os.getenv('GRASS_LOCATION', 'auto_location')
 GRASS_MAPSET = os.getenv('GRASS_MAPSET', 'PERMANENT')
 
 # Directory di input/output fissi
-FABBRICATI_BASE = os.path.abspath(os.path.join('..', '..', 'FABBRICATI'))
-DSM_BASE = os.path.abspath(os.path.join('..', '..', 'input_dsm'))
-OUTPUT_DIR = os.path.abspath(os.path.join('..', 'grass_gis', 'irradiance_tif'))
-SHAPE_OUT_DIR = os.path.abspath(os.path.join('..', '..', 'Data_Collection', 'shapefiles'))
-# Percorso al file CSV dei pannelli fotovoltaici
-PANEL_DATA_PATH = os.path.abspath(os.path.join('..', 'panel', 'panels.csv'))
+FABBRICATI_BASE = os.path.join(BASE_DIR, 'FABBRICATI')
+DSM_BASE = os.path.join(BASE_DIR, 'input_dsm')
+OUTPUT_DIR = os.path.join(BASE_DIR, 'offerta', 'grass_gis', 'irradiance_tif')
+SHAPE_OUT_DIR = os.path.join(BASE_DIR, 'Data_Collection', 'shapefiles')
+PANEL_DATA_PATH = os.path.join(BASE_DIR, 'offerta', 'panel', 'panels.csv')
+
 
 
 def create_grass_location(grass_base, gisdb, location, epsg_code) -> None:
@@ -113,9 +116,9 @@ def solar_radiation_pipeline(provincia: str, comune: str) -> str:
     """Genera il raster annuale di irradianza in kWh."""
     prov_safe = safe_name(provincia)
     com_safe = safe_name(comune)
-    output_tif = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
+    output_tif = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov_safe}_{com_safe}_kwh.tif')
     dem = os.path.join(DSM_BASE, f'DSM_{prov_safe}_{com_safe}.tif')
-    shapefolder = os.path.join(FABBRICATI_BASE, f'fabbricati_{prov}_{com}')
+    shapefolder = os.path.join(FABBRICATI_BASE, f'fabbricati_{prov_safe}_{com_safe}')
 
     logger.info(f'Avvio pipeline solare per {provincia}/{comune}')
     shp_list = [f for f in os.listdir(shapefolder) if f.lower().endswith('.shp')]
@@ -175,7 +178,9 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     gdf = gdf[gdf['irr_kwh_m2'] > 0]
     gdf = calcola_area(gdf, nome_colonna='area_mq')
 
-    panel_df = pd.read_csv(PANEL_DATA_PATH, delimiter=';', decimal=',', na_values=['n.a.', 'N.A.', 'na', 'NA', '-', ''])
+    panel_df = pd.read_csv(PANEL_DATA_PATH, delimiter=',', decimal=',', na_values=['n.a.', 'N.A.', 'na', 'NA', '-', ''])
+    print("Colonne nel DataFrame panel_df:", panel_df.columns.tolist())
+    print(panel_df.head())
     for col in ['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione']:
         panel_df[col] = pd.to_numeric(panel_df[col], errors='coerce')
     panel_df.dropna(subset=['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione'], inplace=True)

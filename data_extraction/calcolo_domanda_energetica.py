@@ -3,10 +3,10 @@ import pandas as pd
 import geopandas as gpd
 import logging
 
-from join_data_normattiva_varcens_basiterr import get_join_data
+from .join_data_normattiva_varcens_basiterr import get_join_data
 from data_extraction_siape.siape_zc_range import get_dati_siape
-from calcola_area_poligoni import calcola_area
-from interrogazione_wfs_catastale import get_dati_catasto
+from .calcola_area_poligoni import calcola_area
+from .interrogazione_wfs_catastale import get_dati_catasto
 from utils import safe_name, get_regione_from_provincia
 
 # === CONFIGURAZIONE LOGGING ===
@@ -15,6 +15,10 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# === BASE DIR PER I PERCORSI RELATIVI AL PROGETTO ===
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.normpath(os.path.join(BASE_DIR, ".."))  # /data_extraction → progetto
 
 # =============================================================================
 # FUNZIONI DI CALCOLO
@@ -26,7 +30,7 @@ def calcola_coefficiente_domanda(df_join: pd.DataFrame, df_siape: pd.DataFrame, 
     df_comune = df_join[
         (df_join['COMUNE'].str.upper() == comune.upper()) &
         (df_join['PROVINCIA'].str.upper() == provincia.upper())
-    ]
+        ]
 
     if df_comune.empty:
         raise ValueError(f"Nessun dato trovato per il comune {comune} nella provincia {provincia}.")
@@ -68,8 +72,8 @@ def calcola_coefficiente_domanda(df_join: pd.DataFrame, df_siape: pd.DataFrame, 
     epgl_nren_5 = get_coeff(df_zc, 'kE16')
 
     coefficiente_domanda = (
-        (b1 * epgl_nren_1 + b2 * epgl_nren_2 + b3 * epgl_nren_3 +
-         b4 * epgl_nren_4 + b5 * epgl_nren_5) / totale_edifici
+            (b1 * epgl_nren_1 + b2 * epgl_nren_2 + b3 * epgl_nren_3 +
+             b4 * epgl_nren_4 + b5 * epgl_nren_5) / totale_edifici
     )
 
     return round(coefficiente_domanda, 2)
@@ -90,10 +94,10 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
     df_siape = get_dati_siape()
     logger.info("Dati SIAPE caricati.")
 
-    # Costruisco il percorso dinamico per lo shapefile dei fabbricati
+    # Path shapefile fabbricati
     prov_safe = safe_name(provincia)
     comm_safe = safe_name(comune)
-    shp_dir = os.path.join('..', 'FABBRICATI', f'fabbricati_{prov_safe}_{comm_safe}')
+    shp_dir = os.path.normpath(os.path.join(PROJECT_ROOT, "FABBRICATI", f"fabbricati_{prov_safe}_{comm_safe}"))
     if not os.path.isdir(shp_dir):
         raise FileNotFoundError(f"Directory shapefile non trovata: {shp_dir}")
 
@@ -116,19 +120,19 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
     coeff_dom = calcola_coefficiente_domanda(df_join, df_siape, comune, provincia)
     logger.info(f"Coefficiente domanda per {comune} ({provincia}): {coeff_dom} kWh/mq/anno")
 
-    # Configuro directory e path output dinamicamente (struttura annidata)
+    # Path output shapefile
     subdir = f"{prov_safe}_{comm_safe}"
     dirname = f"domanda_energetica_{prov_safe}_{comm_safe}"
-    out_dir = os.path.join('..', 'Data_Collection', 'shapefiles', subdir, dirname)
+    out_dir = os.path.normpath(os.path.join(PROJECT_ROOT, "Data_Collection", "shapefiles", subdir, dirname))
     os.makedirs(out_dir, exist_ok=True)
-    out_shp = os.path.join(out_dir, f'{dirname}.shp')
+    out_shp = os.path.join(out_dir, f"{dirname}.shp")
 
     if gdf_fabbricati is not None:
         # Aggiungo colonna domanda energetica
         gdf_fabbricati['domanda_en'] = gdf_fabbricati['area_mq'] * coeff_dom
         logger.info("Colonna domanda energetica aggiunta.")
 
-        # Aggiungo informazioni catastali
+        # Aggiungo dati catastali
         gdf_fabbricati = get_dati_catasto(gdf_fabbricati, provincia, comune)
 
         # Salvo shapefile di output

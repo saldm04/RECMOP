@@ -32,7 +32,9 @@ PROV_DICT = {
 }
 
 # Directory per output CSV per regione
-OUTPUT_DIR = os.path.join('..', 'Data_Collection', 'csv_tables-fase1')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(BASE_DIR, '..', 'Data_Collection', 'csv_tables-fase1')
+OUTPUT_DIR = os.path.abspath(OUTPUT_DIR)
 
 # =============================================================================
 # SETUP LOGGING
@@ -44,10 +46,10 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # ESTRAZIONE DATI
 # =============================================================================
+from .normattiva import get_dati_normattiva, run_estrazione_normattiva
+from .estrazione_dati_basi_territoriali import get_dati_basi_territoriali, run_estrazione_basi_territoriali
+from .estrazione_dati_variabili_censuarie import get_dati_variabili_censuarie, run_estrazione_variabili_censuarie
 
-from normattiva import get_dati_normattiva, run_estrazione_normattiva
-from estrazione_dati_basi_territoriali import get_dati_basi_territoriali, run_estrazione_basi_territoriali
-from estrazione_dati_variabili_censuarie import get_dati_variabili_censuarie, run_estrazione_variabili_censuarie
 
 
 # =============================================================================
@@ -138,25 +140,21 @@ def estrai_join_data(
 
 
 def salva_join_data(df: pd.DataFrame, regione_input: str, output_dir: str = OUTPUT_DIR) -> str:
-    """
-    Salva il DataFrame come CSV join_data_{regione minuscolo}.csv e restituisce il path.
-    """
     os.makedirs(output_dir, exist_ok=True)
     safe_region = safe_name(regione_input)
     filename = f"join_data_{safe_region}.csv"
     path = os.path.join(output_dir, filename)
+    path = os.path.abspath(path)
     df.to_csv(path, index=False, sep=';', encoding='utf-8-sig')
     logger.info("Salvato CSV fase1 per %s in %s", regione_input, path)
     return path
 
 
 def get_join_data(regione_input: str) -> pd.DataFrame:
-    """
-    Restituisce il DataFrame joinato per la regione. Legge il CSV esistente o lo genera.
-    """
     safe_region = safe_name(regione_input)
     filename = f"join_data_{safe_region}.csv"
     path = os.path.join(OUTPUT_DIR, filename)
+    path = os.path.abspath(path)
     if os.path.isfile(path):
         logger.info("File esistente trovato per %s: %s", regione_input, path)
         return pd.read_csv(path, sep=';', encoding='utf-8-sig')
@@ -168,10 +166,10 @@ def get_join_data(regione_input: str) -> pd.DataFrame:
 
 
 def refresh_join_data(
-    regione_input: str,
-    get_basi_territoriali=run_estrazione_basi_territoriali,
-    get_variabili_censuarie=run_estrazione_variabili_censuarie,
-    get_normattiva=run_estrazione_normattiva
+        regione_input: str,
+        get_basi_territoriali=run_estrazione_basi_territoriali,
+        get_variabili_censuarie=run_estrazione_variabili_censuarie,
+        get_normattiva=run_estrazione_normattiva
 ) -> pd.DataFrame:
     logger.info("Ricalcolo join data per %s...", regione_input)
     df = estrai_join_data(
@@ -183,6 +181,8 @@ def refresh_join_data(
     salva_join_data(df, regione_input, output_dir=OUTPUT_DIR)
     return df
 
+
 if __name__ == "__main__":
     regione = "campania"
     df_joined = get_join_data(regione)
+
