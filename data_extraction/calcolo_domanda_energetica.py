@@ -7,6 +7,7 @@ from join_data_normattiva_varcens_basiterr import get_join_data
 from data_extraction_siape.siape_zc_range import get_dati_siape
 from calcola_area_poligoni import calcola_area
 from interrogazione_wfs_catastale import get_dati_catasto
+from utils import safe_name, get_regione_from_provincia
 
 # === CONFIGURAZIONE LOGGING ===
 logging.basicConfig(
@@ -14,79 +15,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# =============================================================================
-# FUNZIONI AUSILIARIE
-# =============================================================================
-
-def get_regione_from_provincia(provincia: str) -> str:
-    """
-    Mappa il nome di una provincia alla sua regione italiana.
-    """
-    provincia = provincia.strip().upper()
-
-    mappa_provincia_regione = {
-        # Piemonte
-        "TORINO": "PIEMONTE", "VERCELLI": "PIEMONTE", "BIELLA": "PIEMONTE", "CUNEO": "PIEMONTE",
-        "ASTI": "PIEMONTE", "ALESSANDRIA": "PIEMONTE", "NOVARA": "PIEMONTE",
-        # Valle d'Aosta
-        "AOSTA": "VALLE D'AOSTA",
-        # Lombardia
-        "VARESE": "LOMBARDIA", "COMO": "LOMBARDIA", "SONDRIO": "LOMBARDIA", "MILANO": "LOMBARDIA",
-        "BERGAMO": "LOMBARDIA", "BRESCIA": "LOMBARDIA", "PAVIA": "LOMBARDIA", "CREMONA": "LOMBARDIA",
-        "MANTOVA": "LOMBARDIA",
-        # Trentino-Alto Adige
-        "BOLZANO": "TRENTINO-ALTO ADIGE", "TRENTO": "TRENTINO-ALTO ADIGE",
-        # Veneto
-        "VERONA": "VENETO", "VICENZA": "VENETO", "BELLUNO": "VENETO", "TREVISO": "VENETO",
-        "VENEZIA": "VENETO", "PADOVA": "VENETO", "ROVIGO": "VENETO",
-        # Friuli-Venezia Giulia
-        "UDINE": "FRIULI-VENEZIA GIULIA", "GORIZIA": "FRIULI-VENEZIA GIULIA",
-        "TRIESTE": "FRIULI-VENEZIA GIULIA", "PORDENONE": "FRIULI-VENEZIA GIULIA",
-        # Liguria
-        "IMPERIA": "LIGURIA", "SAVONA": "LIGURIA", "GENOVA": "LIGURIA", "LA SPEZIA": "LIGURIA",
-        # Emilia-Romagna
-        "PIACENZA": "EMILIA-ROMAGNA", "PARMA": "EMILIA-ROMAGNA", "REGGIO EMILIA": "EMILIA-ROMAGNA",
-        "MODENA": "EMILIA-ROMAGNA", "BOLOGNA": "EMILIA-ROMAGNA", "FERRARA": "EMILIA-ROMAGNA",
-        "RAVENNA": "EMILIA-ROMAGNA", "FORLÌ-CESENA": "EMILIA-ROMAGNA",
-        # Toscana
-        "MASSA-CARRARA": "TOSCANA", "LUCCA": "TOSCANA", "PISTOIA": "TOSCANA", "FIRENZE": "TOSCANA",
-        "LIVORNO": "TOSCANA", "PISA": "TOSCANA", "AREZZO": "TOSCANA", "SIENA": "TOSCANA", "GROSSETO": "TOSCANA",
-        # Umbria
-        "PERUGIA": "UMBRIA", "TERNI": "UMBRIA",
-        # Marche
-        "PESARO E URBINO": "MARCHE", "ANCONA": "MARCHE", "MACERATA": "MARCHE", "ASCOLI PICENO": "MARCHE",
-        # Lazio
-        "VITERBO": "LAZIO", "RIETI": "LAZIO", "ROMA": "LAZIO", "LATINA": "LAZIO", "FROSINONE": "LAZIO",
-        # Abruzzo
-        "L'AQUILA": "ABRUZZO", "TERAMO": "ABRUZZO", "PESCARA": "ABRUZZO", "CHIETI": "ABRUZZO",
-        # Molise
-        "CAMPOBASSO": "MOLISE", "ISERNIA": "MOLISE",
-        # Campania
-        "CASERTA": "CAMPANIA", "BENEVENTO": "CAMPANIA", "NAPOLI": "CAMPANIA",
-        "AVELLINO": "CAMPANIA", "SALERNO": "CAMPANIA",
-        # Puglia
-        "FOGGIA": "PUGLIA", "BARI": "PUGLIA", "TARANTO": "PUGLIA",
-        "BRINDISI": "PUGLIA", "LECCE": "PUGLIA",
-        # Basilicata
-        "POTENZA": "BASILICATA", "MATERA": "BASILICATA",
-        # Calabria
-        "COSENZA": "CALABRIA", "CATANZARO": "CALABRIA", "REGGIO CALABRIA": "CALABRIA",
-        # Sicilia
-        "TRAPANI": "SICILIA", "PALERMO": "SICILIA", "MESSINA": "SICILIA", "AGRIGENTO": "SICILIA",
-        "CALTANISSETTA": "SICILIA", "ENNA": "SICILIA", "CATANIA": "SICILIA", "RAGUSA": "SICILIA", "SIRACUSA": "SICILIA",
-        # Sardegna
-        "SASSARI": "SARDEGNA", "NUORO": "SARDEGNA", "CAGLIARI": "SARDEGNA", "ORISTANO": "SARDEGNA"
-    }
-
-    if provincia not in mappa_provincia_regione:
-        raise ValueError(f"Provincia '{provincia}' non riconosciuta o non presente in mappa.")
-
-    return mappa_provincia_regione[provincia]
-
-def safe_name(nome: str) -> str:
-    """Restituisce il nome in minuscolo e con spazi sostituiti da underscore."""
-    return nome.strip().lower().replace(' ', '_')
 
 # =============================================================================
 # FUNZIONI DI CALCOLO

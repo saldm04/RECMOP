@@ -4,6 +4,8 @@ import logging
 import pandas as pd
 from rapidfuzz import process, fuzz
 
+from utils import safe_name
+
 # =============================================================================
 # COSTANTI
 # =============================================================================
@@ -43,22 +45,28 @@ logger = logging.getLogger(__name__)
 # ESTRAZIONE DATI
 # =============================================================================
 
-from normattiva import get_dati_normattiva
-from estrazione_dati_basi_territoriali import get_dati_basi_territoriali
-from estrazione_dati_variabili_censuarie import get_dati_variabili_censuarie
+from normattiva import get_dati_normattiva, run_estrazione_normattiva
+from estrazione_dati_basi_territoriali import get_dati_basi_territoriali, run_estrazione_basi_territoriali
+from estrazione_dati_variabili_censuarie import get_dati_variabili_censuarie, run_estrazione_variabili_censuarie
+
 
 # =============================================================================
 # ELABORAZIONE DATI
 # =============================================================================
 
-def estrai_join_data(regione_input: str) -> pd.DataFrame:
+def estrai_join_data(
+    regione_input: str,
+    get_basi_territoriali=get_dati_basi_territoriali,
+    get_variabili_censuarie=get_dati_variabili_censuarie,
+    get_normattiva=get_dati_normattiva
+) -> pd.DataFrame:
     """
     Esegue estrazione, merge e fuzzy-matching dei dati per la regione specificata.
     """
     # 1) Estrazione dati
-    df_base = get_dati_basi_territoriali(regione_input)
-    df_cens = get_dati_variabili_censuarie(regione_input)
-    df_norm = get_dati_normattiva()
+    df_base = get_basi_territoriali(regione_input)
+    df_cens = get_variabili_censuarie(regione_input)
+    df_norm = get_normattiva()
 
     logger.info("Dati base estratti: %d righe", len(df_base))
     logger.info("Dati censuari estratti: %d righe", len(df_cens))
@@ -134,7 +142,7 @@ def salva_join_data(df: pd.DataFrame, regione_input: str, output_dir: str = OUTP
     Salva il DataFrame come CSV join_data_{regione minuscolo}.csv e restituisce il path.
     """
     os.makedirs(output_dir, exist_ok=True)
-    safe_region = regione_input.replace(' ', '_').lower()
+    safe_region = safe_name(regione_input)
     filename = f"join_data_{safe_region}.csv"
     path = os.path.join(output_dir, filename)
     df.to_csv(path, index=False, sep=';', encoding='utf-8-sig')
@@ -146,7 +154,7 @@ def get_join_data(regione_input: str) -> pd.DataFrame:
     """
     Restituisce il DataFrame joinato per la regione. Legge il CSV esistente o lo genera.
     """
-    safe_region = regione_input.replace(' ', '_').lower()
+    safe_region = safe_name(regione_input)
     filename = f"join_data_{safe_region}.csv"
     path = os.path.join(OUTPUT_DIR, filename)
     if os.path.isfile(path):
@@ -158,15 +166,23 @@ def get_join_data(regione_input: str) -> pd.DataFrame:
         salva_join_data(df, regione_input, output_dir=OUTPUT_DIR)
         return df
 
-def refresh_join_data(regione_input: str) -> pd.DataFrame:
-    """
-    Ricalcola e salva i dati joinati per la regione specificata.
-    """
+
+def refresh_join_data(
+    regione_input: str,
+    get_basi_territoriali=run_estrazione_basi_territoriali,
+    get_variabili_censuarie=run_estrazione_variabili_censuarie,
+    get_normattiva=run_estrazione_normattiva
+) -> pd.DataFrame:
     logger.info("Ricalcolo join data per %s...", regione_input)
-    df = estrai_join_data(regione_input)
+    df = estrai_join_data(
+        regione_input,
+        get_basi_territoriali=get_basi_territoriali,
+        get_variabili_censuarie=get_variabili_censuarie,
+        get_normattiva=get_normattiva
+    )
     salva_join_data(df, regione_input, output_dir=OUTPUT_DIR)
     return df
 
 if __name__ == "__main__":
-    regione = "Campania"
+    regione = "campania"
     df_joined = get_join_data(regione)

@@ -16,6 +16,7 @@ import pandas as pd
 import geopandas as gpd
 from sklearn.neighbors import NearestNeighbors
 import shutil
+from utils import safe_name
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -303,11 +304,6 @@ class InterazionePebNeb:
             'NEW_PED': new_ped
         }
 
-
-def normalize(s: str) -> str:
-    """Normalizza stringa per nomi file."""
-    return s.lower().replace(" ", "_")
-
 def save_if_not_empty(gdf: gpd.GeoDataFrame, path: str, driver: str = 'GPKG', **kwargs):
     """
     Salva il GeoDataFrame solo se non vuoto. Se esiste un vecchio file ma il nuovo è vuoto, lo elimina.
@@ -324,19 +320,20 @@ def processa_interazione_peb_neb(provincia: str, comune: str) -> None:
     Esegue l'interazione PEB-NEB per una specifica coppia provincia-comune,
     costruendo i percorsi input/output sulla base della struttura dei file.
     """
-    prov_com = f"{normalize(provincia)}_{normalize(comune)}"
+    prov_norm = safe_name(provincia)
+    com_norm = safe_name(comune)
+
+    prov_com = f"{prov_norm}_{com_norm}"
     BASE_DIR = os.path.join("..", "model_builder_shapefiles", prov_com)
 
     # Costruzione percorsi input
     input_neg_dir = os.path.join(BASE_DIR, "input", "neb")
     input_pos_dir = os.path.join(BASE_DIR, "input", "peb")
-    input_neg = os.path.join(input_neg_dir, f"NEB_{provincia}_{comune}.shp")
-    input_pos = os.path.join(input_pos_dir, f"PEB_{provincia}_{comune}.shp")
+    input_neg = os.path.join(input_neg_dir, f"NEB_{prov_norm}_{com_norm}.shp")
+    input_pos = os.path.join(input_pos_dir, f"PEB_{prov_norm}_{com_norm}.shp")
 
     # Costruzione percorsi output (uso nomi file minuscoli)
 # Costruzione percorsi output (uso nomi file minuscoli)
-    prov_norm = normalize(provincia)
-    com_norm = normalize(comune)
     output_ncer = os.path.join(BASE_DIR, "output", "ncer", f"ncer_{prov_norm}_{com_norm}.gpkg")
     output_ned2 = os.path.join(BASE_DIR, "output", "neb", f"outneb_{prov_norm}_{com_norm}.gpkg")
     output_ped2 = os.path.join(BASE_DIR, "output", "peb", f"outpeb_{prov_norm}_{com_norm}.gpkg")
@@ -383,14 +380,17 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
     Il file NCER viene aggiornato iterativamente (append) in un unico file.
     NON viene scritto il file NCER della singola iterazione finale se identico al globale.
     """
-    prov_com = f"{normalize(provincia)}_{normalize(comune)}"
+    prov_norm = safe_name(provincia)
+    com_norm = safe_name(comune)
+
+    prov_com = f"{prov_norm}_{com_norm}"
     BASE_DIR = os.path.join("..", "model_builder_shapefiles", prov_com)
     OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
-    prov_norm = normalize(provincia)
-    com_norm = normalize(comune)
-    input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{provincia}_{comune}.shp")
-    input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{provincia}_{comune}.shp")
+    prov_norm = safe_name(provincia)
+    com_norm = safe_name(comune)
+    input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{prov_norm}_{com_norm}.shp")
+    input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{prov_norm}_{com_norm}.shp")
 
     n_iter = 1
     ncer_path = os.path.join(OUTPUTS_DIR, f"ncer_{prov_norm}_{com_norm}.gpkg")

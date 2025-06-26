@@ -2,6 +2,8 @@ import os
 import logging
 import pandas as pd
 
+from utils import safe_name
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,13 +58,14 @@ def run_estrazione_variabili_censuarie(regione: str) -> pd.DataFrame:
     Estrae e salva i dati censuari per una data regione.
 
     Args:
-        regione: Nome della regione (es. "Campania").
+        regione: Nome della regione (es. "campania").
 
     Returns:
         DataFrame estratto.
     """
-    input_path = os.path.join(BASE_INPUT_DIR, f"{regione}.csv")
-    output_filename = f"variabili_censuarie_{regione.lower()}.csv"
+    regione_safe = safe_name(regione)
+    input_path = os.path.join(BASE_INPUT_DIR, f"{regione_safe}.csv")
+    output_filename = f"variabili_censuarie_{regione_safe}.csv"
 
     df_estratto = estrai_dati_variabili_censuarie(input_path)
     salva_dati_variabili_censuarie(df_estratto, cartella_output=OUTPUT_DIR, nome_file=output_filename)
@@ -75,12 +78,13 @@ def get_dati_variabili_censuarie(regione: str) -> pd.DataFrame:
     creandolo se non ancora presente.
 
     Args:
-        regione: Nome della regione (es. "Campania").
+        regione: Nome della regione (es. "campania").
 
     Returns:
         DataFrame con i dati censuari.
     """
-    output_filename = f"variabili_censuarie_{regione.lower()}.csv"
+    regione_safe = safe_name(regione)
+    output_filename = f"variabili_censuarie_{regione_safe}.csv"
     path_csv = os.path.join(OUTPUT_DIR, output_filename)
 
     if not os.path.exists(path_csv):
@@ -94,4 +98,4 @@ def get_dati_variabili_censuarie(regione: str) -> pd.DataFrame:
 
 if __name__ == "__main__":
     # Esempio d’uso
-    get_dati_variabili_censuarie("Campania")
+    get_dati_variabili_censuarie("campania")

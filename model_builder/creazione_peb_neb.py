@@ -1,6 +1,7 @@
 import os
 import geopandas as gpd
 import logging
+from utils import safe_name
 
 # === CONFIGURAZIONE LOGGING ===
 logging.basicConfig(
@@ -13,8 +14,62 @@ logger = logging.getLogger(__name__)
 SHAPE_IN_DIR = os.path.abspath(os.path.join('..', 'Data_Collection', 'shapefiles'))
 OUTPUT_MODEL_BUILDER = os.path.abspath(os.path.join('..', 'model_builder_shapefiles'))
 
-def safe_name(nome: str) -> str:
-    return nome.strip().lower().replace(' ', '_')
+def join_domanda_offerta(provincia: str, comune: str, gdf_domanda: gpd.GeoDataFrame, gdf_offerta: gpd.GeoDataFrame):
+    """
+    Unisce shapefile domanda_energetica e offerta_energetica (inner join su FID).
+    Salva shapefile di output con tutte le colonne (area_mq non duplicata, nomi colonne originali).
+    """
+    provincia_safe = safe_name(provincia)
+    comune_safe = safe_name(comune)
+    logger.info(f"Avvio join domanda-offerta per {provincia_safe} - {comune_safe}")
+
+    # Controlla duplicati nelle colonne
+    logger.info(f"Colonne domanda: {list(gdf_domanda.columns)}")
+    logger.info(f"Colonne offerta: {list(gdf_offerta.columns)}")
+
+    # Se ci sono più colonne FID, tieni solo la prima (o una sola)
+    # In caso di duplicati, pandas mette suffissi tipo FID, FID_1, ecc
+    offerta_cols = [c for c in gdf_offerta.columns if c != 'geometry' and c != 'area_mq']
+
+    # Rimuovi eventuali duplicati di FID (tieni solo una)
+    fid_count = [c for c in offerta_cols if c == 'FID']
+    if len(fid_count) > 1:
+        # Tieni solo la prima occorrenza
+        first = True
+        new_cols = []
+        for c in offerta_cols:
+            if c == 'FID':
+                if first:
+                    new_cols.append(c)
+                    first = False
+                # Altrimenti salta
+            else:
+                new_cols.append(c)
+        offerta_cols = new_cols
+
+    # Fai merge senza suffissi
+    logger.info("Eseguo inner join su FID senza suffissi nei nomi colonne...")
+    gdf_join = gdf_domanda.merge(
+        gdf_offerta[offerta_cols],
+        on='FID',
+        how='inner'
+    )
+
+    # Directory e nome file output
+    out_dir = os.path.join(
+        SHAPE_IN_DIR,
+        f"{provincia_safe}_{comune_safe}",
+        f"domanda-offerta_energetica_{provincia_safe}_{comune_safe}"
+    )
+    os.makedirs(out_dir, exist_ok=True)
+    join_path = os.path.join(out_dir, f"domanda_offerta_energetica_{provincia_safe}_{comune_safe}.shp")
+
+    # Salvataggio
+    logger.info(f"Salvataggio shapefile di join in {join_path}")
+    gdf_join.to_file(join_path, encoding="utf-8")
+    logger.info("Join domanda-offerta completato.")
+
+
 
 def crea_peb_neb(provincia: str, comune: str):
     """
@@ -42,6 +97,9 @@ def crea_peb_neb(provincia: str, comune: str):
     logger.info("Caricamento shapefile di domanda e offerta...")
     gdf_domanda = gpd.read_file(domanda_shp)
     gdf_offerta = gpd.read_file(offerta_shp)
+
+    logger.info("Creo shapefile domanda-offerta.")
+    join_domanda_offerta(provincia, comune, gdf_domanda, gdf_offerta)
 
     # Join su FID (ID edificio)
     logger.info("Eseguo join tra domanda e offerta su FID...")

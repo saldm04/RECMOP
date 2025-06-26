@@ -10,6 +10,7 @@ import pandas as pd
 from pvlib.clearsky import lookup_linke_turbidity
 from rasterstats import zonal_stats
 from data_extraction.calcola_area_poligoni import calcola_area
+from utils import safe_name
 
 # CONFIGURAZIONE LOG
 logging.basicConfig(
@@ -32,9 +33,6 @@ OUTPUT_DIR = os.path.abspath(os.path.join('..', 'grass_gis', 'irradiance_tif'))
 SHAPE_OUT_DIR = os.path.abspath(os.path.join('..', '..', 'Data_Collection', 'shapefiles'))
 # Percorso al file CSV dei pannelli fotovoltaici
 PANEL_DATA_PATH = os.path.abspath(os.path.join('..', 'panel', 'panels.csv'))
-
-def safe_name(nome: str) -> str:
-    return nome.strip().lower().replace(' ', '_')
 
 
 def create_grass_location(grass_base, gisdb, location, epsg_code) -> None:
@@ -111,13 +109,12 @@ def get_linke_turbidity(lat: float, lon: float) -> dict:
     logger.info(f'Turbidity Linke per mesi: {vals}')
     return vals
 
-
 def solar_radiation_pipeline(provincia: str, comune: str) -> str:
     """Genera il raster annuale di irradianza in kWh."""
-    prov = provincia.lower().strip()
-    com = comune.lower().strip()
+    prov_safe = safe_name(provincia)
+    com_safe = safe_name(comune)
     output_tif = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
-    dem = os.path.join(DSM_BASE, f'DSM_{prov}_{com}.tif')
+    dem = os.path.join(DSM_BASE, f'DSM_{prov_safe}_{com_safe}.tif')
     shapefolder = os.path.join(FABBRICATI_BASE, f'fabbricati_{prov}_{com}')
 
     logger.info(f'Avvio pipeline solare per {provincia}/{comune}')
@@ -190,6 +187,7 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     gdf['Prz_uni'] = specs['Prezzo']
     gdf['num_PV'] = (gdf['area_mq'] / gdf['Dim_m2']).astype(int).clip(lower=0)
     gdf['Prz_tot'] = gdf['num_PV'] * gdf['Prz_uni']
+    gdf['Ptnz_tot'] = gdf['Ptnz_Wp'] * gdf['num_PV']
     gdf['Prod_kWh_y'] = gdf['irr_kwh_m2'] * (1 - gdf['Eff_pct']/100) * gdf['Ptnz_Wp'] * gdf['num_PV'] / 1000
 
     # --- Output coerente: .../shapefiles/salerno_padula/offerta_energetica_salerno_padula/offerta_energetica_salerno_padula.shp
@@ -203,11 +201,10 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     return gdf
 
 
-
 def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int):
     """Orchestratore: verifica raster ed esegui calcolo offerta."""
-    prov = provincia.lower().strip()
-    com = comune.lower().strip()
+    prov = safe_name(provincia)
+    com = safe_name(comune)
     raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
     logger.info(f'Avvio orchestrator per offerta energetica {provincia}/{comune}')
     if not os.path.isfile(raster):
@@ -217,6 +214,12 @@ def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int):
         logger.info(f'Utilizzo raster esistente: {raster}')
     return calculate_building_irradiance(provincia, comune, idx_panel)
 
+def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int):
+    prov = safe_name(provincia)
+    com = safe_name(comune)
+    raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
+    solar_radiation_pipeline(provincia, comune)
+    return calculate_building_irradiance(provincia, comune, idx_panel)
 
 if __name__ == '__main__':
     # Esempio di esecuzione

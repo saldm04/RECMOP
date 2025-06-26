@@ -2,7 +2,7 @@ import os
 import logging
 import pandas as pd
 from dbfread import DBF
-import geopandas as gpd
+from utils import safe_name
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -53,14 +53,16 @@ def salva_dati_basi_territoriali(df: pd.DataFrame, cartella_output: str, nome_fi
 
 def run_estrazione_basi_territoriali(regione: str) -> pd.DataFrame:
     input_path = trova_dbf_in_regione(regione)
-    nome_file = f"basi_territoriali_{regione.lower()}.csv"
+    regione_safe = safe_name(regione)
+    nome_file = f"basi_territoriali_{regione_safe}.csv"
     df = estrai_dati_basi_territoriali(input_path)
     salva_dati_basi_territoriali(df, OUTPUT_DIR, nome_file)
     return df
 
 
 def get_dati_basi_territoriali(regione: str) -> pd.DataFrame:
-    nome_file = f"basi_territoriali_{regione.lower()}.csv"
+    regione_safe = safe_name(regione)
+    nome_file = f"basi_territoriali_{regione_safe}.csv"
     path_csv = os.path.join(OUTPUT_DIR, nome_file)
     if not os.path.exists(path_csv):
         logger.warning(f"File CSV non trovato per {regione}, avvio estrazione.")
@@ -76,4 +78,4 @@ def trova_shp_in_regione(regione: str) -> str:
 
 if __name__ == '__main__':
     # Esempio di utilizzo
-    df = get_dati_basi_territoriali("Campania")
+    df = get_dati_basi_territoriali("campania")
