@@ -251,31 +251,46 @@ class InterazionePebNeb:
         ned2 = self.calculate_field(ned2, 'deficit2',
                                     lambda df: np.where(df['deficit'].isna(), df['DELTA'], df['deficit']))
 
+        def pulisci_id(*args):
+            """Unisce i pezzi, rimuovendo nan, stringhe vuote e eventuali .0 finali."""
+            return '_'.join([
+                str(a).replace('.0', '') for a in args
+                if pd.notnull(a) and str(a) != 'nan' and str(a).strip() != ''
+            ])
+
         # Pulizia finale e rinominazione campi
         # PED2
-        ped2 = self.calculate_field(ped2, 'ID_P2',
-                                    lambda df: (df['ID_P'].fillna(0).astype(int).astype(str) + '_' +
-                                               df['ID_N'].fillna(0).astype(int).astype(str)), 'str')
-
+        ped2 = self.calculate_field(
+            ped2, 'ID_P2',
+            lambda df: [
+                pulisci_id(p, n) for p, n in zip(
+                    df['ID_P'], df['ID_N']
+                )
+            ], 'str'
+        )
         cols_to_drop = ['deficit', 'surplus', 'ID_P', 'ID_N', 'DELTA', 'Agr']
         ped2_final = ped2.drop(columns=[col for col in cols_to_drop if col in ped2.columns])
         ped2_final = ped2_final.rename(columns={'surplus2': 'surplus', 'ID_P2': 'ID_P'})
 
         # NED2
-        ned2 = self.calculate_field(ned2, 'ID_N2',
-                                    lambda df: (df['ID_N'].fillna(0).astype(int).astype(str) + '_'
-                                               + df['ID_P'].fillna(0).astype(int).astype(str)), 'str')
-
+        ned2 = self.calculate_field(
+            ned2, 'ID_N2',
+            lambda df: [
+                pulisci_id(n, p) for n, p in zip(
+                    df['ID_N'], df['ID_P']
+                )
+            ], 'str'
+        )
         ned2_final = ned2.drop(columns=[col for col in cols_to_drop if col in ned2.columns])
         ned2_final = ned2_final.rename(columns={'deficit2': 'deficit', 'ID_N2': 'ID_N'})
 
         logger.info("Salvataggio risultati...")
         # Salva i risultati
-        ncer_final.to_file(output_ncer_path, driver='ESRI Shapefile')
-        ned2_final.to_file(output_ned2_path, driver='ESRI Shapefile')
-        ped2_final.to_file(output_ped2_path, driver='ESRI Shapefile')
-        #new_ned.to_file(new_ned_path, driver='ESRI Shapefile')
-        #new_ped.to_file(new_ped_path, driver='ESRI Shapefile')
+        ncer_final.to_file(output_ncer_path, driver='GPKG')
+        ned2_final.to_file(output_ned2_path, driver='GPKG')
+        ped2_final.to_file(output_ped2_path, driver='GPKG')
+        #new_ned.to_file(new_ned_path, driver='GPKG')
+        #new_ped.to_file(new_ped_path, driver='GPKG')
 
 
         logger.info("Elaborazione completata!")
@@ -291,6 +306,16 @@ class InterazionePebNeb:
 def normalize(s: str) -> str:
     """Normalizza stringa per nomi file."""
     return s.lower().replace(" ", "_")
+
+def save_if_not_empty(gdf: gpd.GeoDataFrame, path: str, driver: str = 'GPKG', **kwargs):
+    """
+    Salva il GeoDataFrame solo se non vuoto. Se esiste un vecchio file ma il nuovo è vuoto, lo elimina.
+    """
+    if not gdf.empty:
+        gdf.to_file(path, driver=driver, **kwargs)
+    else:
+        if os.path.exists(path):
+            os.remove(path)
 
 
 def processa_interazione_peb_neb(provincia: str, comune: str) -> None:
@@ -311,11 +336,11 @@ def processa_interazione_peb_neb(provincia: str, comune: str) -> None:
 # Costruzione percorsi output (uso nomi file minuscoli)
     prov_norm = normalize(provincia)
     com_norm = normalize(comune)
-    output_ncer = os.path.join(BASE_DIR, "output", "ncer", f"ncer_{prov_norm}_{com_norm}.shp")
-    output_ned2 = os.path.join(BASE_DIR, "output", "neb", f"outneb_{prov_norm}_{com_norm}.shp")
-    output_ped2 = os.path.join(BASE_DIR, "output", "peb", f"outpeb_{prov_norm}_{com_norm}.shp")
-    new_ned = os.path.join(BASE_DIR, "new", "neb", f"newneb_{prov_norm}_{com_norm}.shp")
-    new_ped = os.path.join(BASE_DIR, "new", "peb", f"newpeb_{prov_norm}_{com_norm}.shp")
+    output_ncer = os.path.join(BASE_DIR, "output", "ncer", f"ncer_{prov_norm}_{com_norm}.gpkg")
+    output_ned2 = os.path.join(BASE_DIR, "output", "neb", f"outneb_{prov_norm}_{com_norm}.gpkg")
+    output_ped2 = os.path.join(BASE_DIR, "output", "peb", f"outpeb_{prov_norm}_{com_norm}.gpkg")
+    new_ned = os.path.join(BASE_DIR, "new", "neb", f"newneb_{prov_norm}_{com_norm}.gpkg")
+    new_ped = os.path.join(BASE_DIR, "new", "peb", f"newpeb_{prov_norm}_{com_norm}.gpkg")
 
 
 # Crea le directory di output se non esistono
@@ -349,6 +374,118 @@ def processa_interazione_peb_neb(provincia: str, comune: str) -> None:
         logger.error("Errore durante l'elaborazione: %s", e, exc_info=True)
         sys.exit(1)
 
+def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
+    """
+    Esegue il ciclo di aggregazione PEB-NEB iterativamente,
+    fermandosi quando almeno uno tra outpeb e outneb è vuoto.
+    Ogni output viene scritto solo se non vuoto.
+    Il file NCER viene aggiornato iterativamente (append) in un unico file.
+    NON viene scritto il file NCER della singola iterazione finale se identico al globale.
+    """
+    prov_com = f"{normalize(provincia)}_{normalize(comune)}"
+    BASE_DIR = os.path.join("..", "model_builder_shapefiles", prov_com)
+    OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+
+    prov_norm = normalize(provincia)
+    com_norm = normalize(comune)
+    input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{provincia}_{comune}.shp")
+    input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{provincia}_{comune}.shp")
+
+    n_iter = 1
+    ncer_path = os.path.join(OUTPUTS_DIR, f"ncer_{prov_norm}_{com_norm}.gpkg")
+    ncer_layer_name = "ncer"
+
+    # Sicurezza: rimuovi eventuale file NCER globale già esistente
+    if os.path.exists(ncer_path):
+        os.remove(ncer_path)
+
+    last_ncer_gpkg_path = None
+    last_ncer_gdf = None
+
+    prev_ncer = None  # per confronto tra iterazioni
+
+    while True:
+        logger.info(f"\n=== ITERAZIONE {n_iter} ===")
+
+        output_dir = os.path.join(OUTPUTS_DIR, f"output{n_iter}")
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_ncer = os.path.join(output_dir, f"ncer_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+        output_ned2 = os.path.join(output_dir, f"outneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+        output_ped2 = os.path.join(output_dir, f"outpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+        new_ned = os.path.join(output_dir, f"newneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+        new_ped = os.path.join(output_dir, f"newpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+
+        processor = InterazionePebNeb()
+        results = processor.process_algorithm(
+            input_positivo_path=input_pos,
+            input_negativo_path=input_neg,
+            output_ncer_path=output_ncer,
+            output_ned2_path=output_ned2,
+            output_ped2_path=output_ped2,
+            new_ned_path=new_ned,
+            new_ped_path=new_ped
+        )
+
+        ncer = results['NCER'].copy()
+        ped2_gdf = results['PED2']
+        ned2_gdf = results['NED2']
+
+        ncer['iterazione'] = n_iter
+
+        # NCER globale: append solo se non vuoto
+        if not ncer.empty:
+            if not os.path.exists(ncer_path):
+                save_if_not_empty(ncer, ncer_path, layer=ncer_layer_name)
+            else:
+                old_ncer = gpd.read_file(ncer_path, layer=ncer_layer_name)
+                ncer_all = pd.concat([old_ncer, ncer], ignore_index=True)
+                save_if_not_empty(gpd.GeoDataFrame(ncer_all, crs=ncer.crs), ncer_path, layer=ncer_layer_name)
+            logger.info(f"NCER aggiornato con {len(ncer)} record (iterazione {n_iter})")
+
+        # NCER iterazione: scrivi solo se non vuoto e diverso dal precedente (così non salvi inutili duplicati)
+        write_ncer_iter = False
+        if not ncer.empty and (prev_ncer is None or not ncer.equals(prev_ncer)):
+            write_ncer_iter = True
+        if write_ncer_iter:
+            save_if_not_empty(ncer, output_ncer)
+            last_ncer_gpkg_path = output_ncer
+            last_ncer_gdf = ncer.copy()
+        else:
+            if os.path.exists(output_ncer):
+                os.remove(output_ncer)
+        prev_ncer = ncer.copy() if not ncer.empty else None
+
+        # Altri output: solo se non vuoti
+        save_if_not_empty(ped2_gdf, output_ped2)
+        save_if_not_empty(ned2_gdf, output_ned2)
+        # Se vuoi anche i NEW_NED / NEW_PED, decommenta qui:
+        # save_if_not_empty(results['NEW_PED'], new_ped)
+        # save_if_not_empty(results['NEW_NED'], new_ned)
+
+        # Stop se uno dei due layer principali è vuoto
+        if ped2_gdf.empty or ned2_gdf.empty:
+            logger.info(f"Iterazione {n_iter}: condizione di terminazione raggiunta (uno degli output è vuoto).")
+            break
+
+        # Output della prossima iterazione
+        input_pos = output_ped2
+        input_neg = output_ned2
+        n_iter += 1
+
+    # --- Fine ciclo: elimina NCER iterazione finale se duplicato di quello globale
+    if last_ncer_gpkg_path is not None and last_ncer_gdf is not None:
+        ncer_final = gpd.read_file(ncer_path, layer=ncer_layer_name)
+        ncer_last_iter = ncer_final[ncer_final['iterazione'] == n_iter]
+        if not ncer_last_iter.empty and ncer_last_iter.equals(last_ncer_gdf):
+            try:
+                os.remove(last_ncer_gpkg_path)
+                logger.info(f"Rimosso file NCER dell’ultima iterazione ({last_ncer_gpkg_path}) perché duplicato di quello incrementale.")
+            except Exception as e:
+                logger.warning(f"Impossibile eliminare {last_ncer_gpkg_path}: {e}")
+
+    logger.info(f"Ciclo completato! File NCER incrementale: {ncer_path}")
+
 
 if __name__ == "__main__":
-    processa_interazione_peb_neb("Salerno", "Padula")
+    ciclo_interazione_peb_neb("Salerno", "Padula")
