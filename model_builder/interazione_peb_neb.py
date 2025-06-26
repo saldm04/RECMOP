@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from sklearn.neighbors import NearestNeighbors
+import shutil
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -403,6 +404,14 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
     last_ncer_gdf = None
 
     prev_ncer = None  # per confronto tra iterazioni
+
+    # --- NUOVO BLOCCO: elimina l'intera cartella outputs, se esiste ---
+    if os.path.exists(OUTPUTS_DIR):
+        try:
+            shutil.rmtree(OUTPUTS_DIR)
+            logger.info(f"Cartella OUTPUTS eliminata: {OUTPUTS_DIR}")
+        except Exception as e:
+            logger.warning(f"Impossibile eliminare la cartella {OUTPUTS_DIR}: {e}")
 
     while True:
         logger.info(f"\n=== ITERAZIONE {n_iter} ===")
