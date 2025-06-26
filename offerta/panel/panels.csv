@@ -1,101 +1,17 @@
-Marca;Modello;Potenza (Wp);Efficienza (%);Tecnologia;Prezzo;Superficie;Dimensione
-Sonnenkraft;KPV 430Wp HCB;430;21,52;Categoria A;129,00;1,998;2,597
-FuturaSun;FUxxxMV Silk Nova EU;430;22,02;Categoria A;125,00;1,952;2,538
-Fly Solartech Solutions;FLY-108-M10T-xG;430;22,02;Categoria A;n.a.;1,709;2,221
-PEIMAR;SA505M;505;21,54;Categoria A;135,00;2,344;3,047
-SOLYCO;R-TG 108n.3 EU30;425;21,80;Categoria A;n.a.;1,952;2,538
-SoliTek;BlackStar B.108 - 420W;420;21,51;Categoria A;142,00;1,952;2,538
-TRIENERGIA;COE-430M10EF;430;22,02;Categoria A;118,00;n.a.;n.a.
-BISOL;BDO-430;430;22,00;Categoria A;135,00;n.a.;n.a.
-DAX Solar;DAX 108 P10;420;21,51;Categoria A;n.a.;n.a.;n.a.
-Sunerg Solar srl;XMHCTO430BW+H;430;22,02;Categoria A;119,00;1,952;2,538
-3SUN;3SHBGH-C#;625;22,10;Categoria A;195,00;2,830;3,679
-GruppoSTG;VE654PV;430;22,02;Categoria A;n.a.;n.a.;n.a.
-Solvis;SV108-430 E F HCM10;430;22,02;Categoria A;n.a.;n.a.;n.a.
-Solvis;SV108-430 E F GG22 HCM10;430;22,02;Categoria A;n.a.;n.a.;n.a.
-Sunerg Solar srl;XMHCTP480BW+H;480;22,18;Categoria A;135,00;n.a.;n.a.
-Sunerg Solar srl;XMHCTQ580+H;580;22,45;Categoria A;159,00;n.a.;n.a.
-Sonnenkraft;KPV 435Wp HC;435;22,00;Categoria A;132,00;n.a.;n.a.
-Sonnenkraft;KPV 440Wp HC;440;22,27;Categoria A;135,00;n.a.;n.a.
-TRIENERGIA;COE-425M10EF;425;21,76;Categoria A;115,00;n.a.;n.a.
-SoliTek;BlackStar B.108 - 435W;435;22,27;Categoria A;145,00;1,952;2,538
-3SUN;3SHBGH-C#;620;21,90;Categoria A;189,00;2,830;3,679
-3SUN;3SHBGH-C#;615;21,70;Categoria A;185,00;2,830;3,679
-3SUN;3SHBGH-C#;610;21,60;Categoria A;182,00;n.a.;n.a.
-3SUN;3SHBGH-C#;630;22,30;Categoria A;198,00;n.a.;n.a.
-EURENER;ESM430-54HM10;430;22,01;Categoria A;126,00;n.a.;n.a.
-aleo;Leo-N L64S430;430;21,50;Categoria A;148,00;n.a.;n.a.
-DAX Solar;DAX 108 TC10;440;22,53;Categoria A;n.a.;n.a.;n.a.
-Viessmann Climate Solutions SE;Vitovolt 300 M435 KC;435;21,70;Categoria A;155,00;n.a.;n.a.
-Meyer Burger;White 395;395;21,50;Categoria C;169,00;1,952;2,538
-BISOL;BBO-520;520;21,90;Categoria A;149,00;n.a.;n.a.
-Sunerg Solar srl;XMHCTQ580BFDG+H;580;22,45;Categoria A;162,00;n.a.;n.a.
-BISOL;BBO-530;530;22,30;Categoria A;152,00;n.a.;n.a.
-BISOL;BDO-425;425;21,80;Categoria A;132,00;n.a.;n.a.
-SoliTek;Solid Framed B.120 - 505W;505;22,31;Categoria A;165,00;n.a.;n.a.
-BISOL;BBO-525;525;22,10;Categoria A;151,00;n.a.;n.a.
-BISOL;BDO-440;440;22,50;Categoria A;136,00;n.a.;n.a.
-OMNIA Solar;G430M10E-54HBW;430;21,78;Categoria A;112,00;1,952;2,538
-BISOL;BBO-540;540;22,70;Categoria A;155,00;n.a.;n.a.
-WARIS ENERGY SRL;WRS-EU-440-27 MHD BF;440;22,57;Categoria A;n.a.;n.a.;n.a.
-WARIS ENERGY SRL;WRS-EU-440-27 MH BF;440;22,57;Categoria A;n.a.;n.a.;n.a.
-Soluxtec;DMMXSCNi BW;440;22,57;Categoria A;n.a.;n.a.;n.a.
-Soluxtec;DMMXSCNiXXXBB;430;22,04;Categoria A;n.a.;n.a.;n.a.
-OMNIA Solar;G475M10E-60HBW;475;21,74;Categoria A;122,00;n.a.;n.a.
-Viessmann Climate Solutions SE;Vitovolt 300 M440 KC;440;22,00;Categoria A;158,00;n.a.;n.a.
-SOLAR CALL;SCM10-505;505;21,54;Categoria A;n.a.;n.a.;n.a.
-WARIS ENERGY SRL;WRS-EU-430-27 MHD BF;430;22,04;Categoria A;n.a.;n.a.;n.a.
-Solvis;SV120 E F GG22 HCM10;480;22,17;Categoria A;n.a.;n.a.;n.a.
-Solvis;SV120 E F HCM10;480;22,17;Categoria A;n.a.;n.a.;n.a.
-Solvis;SV144 E GG22 HCM10;580;22,45;Categoria A;n.a.;n.a.;n.a.
-Solvis;SV144 E HCM10;580;22,45;Categoria A;n.a.;n.a.;n.a.
-BISOL;BDO-450;450;22,50;Categoria A;139,00;n.a.;n.a.
-BISOL;BBO-510;510;22,80;Categoria A;148,00;n.a.;n.a.
-BISOL;BDO-450 (Bifacial);450;22,50;Categoria A;149,00;n.a.;n.a.
-BISOL;BBO-510 (Bifacial);510;22,80;Categoria A;158,00;n.a.;n.a.
-Soluxtec;DMMXSCNi430PG;430;22,04;Categoria A;n.a.;n.a.;n.a.
-Meyer Burger;Glass 380 (Bifacial);380;21,20;Categoria C;175,00;1,952;2,538
-Meyer Burger;Black 385;385;20,90;Categoria C;165,00;1,952;2,538
-Sonnenkraft;KPV 435Wp HCB;435;21,77;Categoria A;132,00;n.a.;n.a.
-Meyer Burger;White 390;390;21,20;Categoria C;168,00;1,952;2,538
-Meyer Burger;Glass 385 L(Bifacial);385;20,90;Categoria C;178,00;1,952;2,538
-Meyer Burger;Black 380;380;20,70;Categoria C;162,00;1,952;2,538
-DAX Solar;DAX 120 TC10;490;22,65;Categoria A;n.a.;n.a.;n.a.
-DAX Solar;DAX 132 TC10;540;22,74;Categoria A;n.a.;n.a.;n.a.
-DAX Solar;DAX 144 TC10;590;22,84;Categoria A;n.a.;n.a.;n.a.
-DAX Solar;DAX 156 TC10;635;22,72;Categoria A;n.a.;n.a.;n.a.
-NWG;NWG MOD 505 P;505;21,54;Categoria A;n.a.;n.a.;n.a.
-Meyer Burger;Black 390;390;21,20;Categoria C;168,00;1,952;2,538
-EURENER;ESM570-72HM10;570;22,03;Categoria A;158,00;n.a.;n.a.
-Sunerg Solar srl;XMHC460BFDGKL+H;460;23,02;Categoria A;129,00;n.a.;n.a.
-Sunerg Solar srl;XMHCTP500BFDG+H;500;23,11;Categoria A;142,00;n.a.;n.a.
-Sunerg Solar srl;XMHCTQ590BFDG+H;590;22,83;Categoria A;165,00;n.a.;n.a.
-Sunerg Solar srl;XMHCTQ600BFDG+H;600;23,22;Categoria A;172,00;n.a.;n.a.
-Torri Solare;TRS 440-54M-H8N;440;22,50;Categoria A;n.a.;n.a.;n.a.
-PEIMAR;SA460M;460;21,53;Categoria A;125,00;n.a.;n.a.
-OMNIA Solar;G430T10BE-54HBW;430;22,02;Categoria A;115,00;n.a.;n.a.
-Waris Energy srl;WRS-EU-450-27 MH BF;450;23,09;Categoria A;n.a.;n.a.;n.a.
-OMNIA Solar;G580T10BE-72HSW;580;22,45;Categoria A;148,00;n.a.;n.a.
-OMNIA Solar;G480T10BE-60HBW;480;22,17;Categoria A;125,00;n.a.;n.a.
-Soluxtec;DMMXSCNi BB;440;22,55;Categoria A;n.a.;n.a.;n.a.
-ALPS SOLAR;ALPS72D30-600TP;600;23,30;Categoria A;n.a.;n.a.;n.a.
-Sunerg Solar srl;XMHCTQ580BW+H;580;22,45;Categoria A;159,00;n.a.;n.a.
-Torri Solare;TRS 485-60M-H8N;485;22,50;Categoria A;n.a.;n.a.;n.a.
-Soluxtec;DMMXSCNi BW;450;23,09;Categoria A;n.a.;n.a.;n.a.
-EURENER;ESM580-72HM10;580;22,47;Categoria A;162,00;n.a.;n.a.
-SUNGI SOLAR EUROPE;SNG144-580EHCM10;580;22,45;Categoria A;n.a.;n.a.;n.a.
-SoliTek;Solid Solrif N - 435W;435;22,04;Categoria A;148,00;1,971;2,562
-SoliTek;Solid Solrif D - 435W;435;22,04;Categoria A;148,00;1,971;2,562
-SUNGI SOLAR EUROPE;SNG108-430EHCM10;430;22,02;Categoria A;n.a.;n.a.;n.a.
-SUNGI SOLAR EUROPE;SNG120-480EHCM10;480;22,17;Categoria A;n.a.;n.a.;n.a.
-ECLIPSE ITALIA;ECLXXXM10HC;520;21,88;Categoria A;n.a.;n.a.;n.a.
-SUNGI SOLAR EUROPE;SNG108-430EGG22HCM10;430;22,02;Categoria A;n.a.;n.a.;n.a.
-SUNGI SOLAR EUROPE;SNG144-580EGG22HCM10;580;22,45;Categoria A;n.a.;n.a.;n.a.
-Soluxtec;DMMXSCNi BB;425;21,80;Categoria A;n.a.;n.a.;n.a.
-Fly Solartech Solutions;FLY-144-580-M10T-SG;580;22,45;Categoria A;n.a.;n.a.;n.a.
-Fly Solartech Solutions;FLY-120-480-M10T-BG;480;22,17;Categoria A;n.a.;n.a.;n.a.
-SUNGI SOLAR EUROPE;SNG120-480EGG22HCM10;480;22,17;Categoria A;n.a.;n.a.;n.a.
-EURENER;ESM440-54HM10-BB;440;22,56;Categoria A;132,00;n.a.;n.a.
-SoliTek;SOLID Bifacial Frameless - 435W;435;22,07;Categoria A;155,00;1,971;2,562
-SoliTek;Solid bifacial framed - 435W;435;22,27;Categoria A;158,00;1,952;2,538
-EURENER;ES M480-60HM10TB;480;22,18;Categoria A;136,00;n.a.;n.a.
+Marca,Modello,Potenza (Wp),Efficienza (%),Tecnologia,Prezzo,Superficie,Dimensione
+Sonnenkraft,KPV 430Wp HCB,430,21.52,Categoria A,129.00,1.998,2.597
+FuturaSun,FUxxxMV Silk Nova EU,430,22.02,Categoria A,125.00,1.952,2.538
+PEIMAR,SA505M,505,21.54,Categoria A,135.00,2.344,3.047
+SoliTek,BlackStar B.108 - 420W,420,21.51,Categoria A,142.00,1.952,2.538
+Sunerg Solar srl,XMHCTO430BW+H,430,22.02,Categoria A,119.00,1.952,2.538
+SoliTek,Solid Solrif N - 435W,435,22.04,Categoria A,148.00,1.971,2.562
+SoliTek,Solid Solrif D - 435W,435,22.04,Categoria A,148.00,1.971,2.562
+SoliTek,BlackStar B.108 - 435W,435,22.27,Categoria A,145.00,1.952,2.538
+SoliTek,SOLID Bifacial Frameless - 435W,435,22.07,Categoria A,155.00,1.971,2.562
+SoliTek,Solid bifacial framed - 435W,435,22.27,Categoria A,158.00,1.952,2.538
+Meyer Burger,White 395,395,21.50,Categoria C,169.00,1.952,2.538
+Meyer Burger,Black 385,385,20.90,Categoria C,165.00,1.952,2.538
+Meyer Burger,White 390,390,21.20,Categoria C,168.00,1.952,2.538
+Meyer Burger,Glass 385 L(Bifacial),385,20.90,Categoria C,178.00,1.952,2.538
+Meyer Burger,Black 380,380,20.70,Categoria C,162.00,1.952,2.538
+Meyer Burger,Black 390,390,21.20,Categoria C,168.00,1.952,2.538
