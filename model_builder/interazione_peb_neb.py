@@ -6,7 +6,6 @@ Descrizione:
     Riproduce la logica del modello QGIS "INTERAZIONE PEB-NEB" con le nuove funzionalità
     di autosufficienza (55%) e creazione NCER, mantenendo la struttura dei percorsi originale.
 """
-import argparse
 import logging
 import os
 import sys
@@ -16,10 +15,9 @@ import pandas as pd
 import geopandas as gpd
 from sklearn.neighbors import NearestNeighbors
 import shutil
-from utils import safe_name
+from utils import safe_name, configure_logging_if_main
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 class InterazionePebNeb:
@@ -474,4 +472,6 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
 
 
 if __name__ == "__main__":
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     ciclo_interazione_peb_neb("Salerno", "Padula")

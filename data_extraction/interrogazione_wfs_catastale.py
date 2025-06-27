@@ -5,11 +5,12 @@ import requests
 import xml.etree.ElementTree as ET
 import geopandas as gpd
 
+from utils import safe_name
+
 # ========================
 # CONFIGURAZIONE LOGGING
 # ========================
-LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, handlers=[logging.StreamHandler()])
+
 logger = logging.getLogger(__name__)
 
 # ========================
@@ -107,10 +108,10 @@ def get_output_paths(provincia: str, comune: str) -> tuple:
     Restituisce la directory e il percorso completo dello shapefile per provincia e comune (in minuscolo, senza spazi).
     [assoluto]/Data_Collection/shapefiles/[provincia]_[comune]/dati_catasto_[provincia]_[comune]/dati_catasto_[provincia]_[comune].shp
     """
-    provincia = provincia.lower().replace(" ", "_")
-    comune = comune.lower().replace(" ", "_")
-    subdir = f"{provincia}_{comune}"
-    dir_name = f"dati_catasto_{provincia}_{comune}"
+    prov_safe = safe_name(provincia)
+    comune_safe = safe_name(comune)
+    subdir = f"{prov_safe}_{comune_safe}"
+    dir_name = f"dati_catasto_{prov_safe}_{comune_safe}"
     dir_path = os.path.join(OUTPUT_BASE_DIR, subdir, dir_name)
     shp_name = f"{dir_name}.shp"
     shp_path = os.path.join(dir_path, shp_name)
@@ -123,7 +124,9 @@ def get_output_paths(provincia: str, comune: str) -> tuple:
 def salva_shapefile_catastale(gdf: gpd.GeoDataFrame, provincia: str, comune: str):
     """Salva il GeoDataFrame in shapefile nella directory dedicata."""
     dir_path, shp_path = get_output_paths(provincia, comune)
-    os.makedirs(dir_path, exist_ok=True)
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+    os.makedirs(dir_path)
     logger.info(f"Salvataggio shapefile: {shp_path}")
     gdf.to_file(shp_path, driver='ESRI Shapefile')
 

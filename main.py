@@ -1,76 +1,6 @@
-#normalizza_input_fabbricati (funzione che controlla il formato della tabella e il nome file) !!!Chiedere reinserimento in caso errato
-"""
-Inserisci il nome della cartella che contiene i file shapefile (.shp, .dbf, .cpg, .shx, .prj) relativi ai fabbricati del comune di interesse.
-La cartella deve essere nominata seguendo questo formato, quindi senza lettere maiuscole e senza spazi(se i nomi li hanno inserire '-'), ma separati da underscore come segue:
-fabbricati_provincia_comune
-Esempio:
-1)fabbricati_napoli_poggiomarino
-2)fabbricati_napoli_torre-annunziata
-"""
-
-#normalizza_DSM (funzione che controlla il formato del file)  !!!Chiedere reinserimento in caso errato
-"""
-Inserisci il nome del file DSM seguendo il seguente formato:
-DSM_provincia_comune.tif
-DSM in maiuscolo mentre provincia e comune tutto minuscolo, se i nomi hanno spazi fare come prima, inserire '-' tra gli spazi
-Esempio:
-1)DSM_napoli_poggiomarino.tif
-2)DSM_napoli_torre-annunziata.tif
-"""
-
-#salvati comune e provincia prendendoli dal nome dei file separati tra underscore
-#salvati regione = get_regione_from_provincia(provincia)
-"""
-Vuoi aggiornare dati delle prestazioni energetiche del SIAPE?
-Esempio risposta:
-SI           NO
-#  SI = invoca run_estrazione_siape
-Vuoi aggiornare la lista dei comuni con le zone climatiche estratti da normattiva?
-Esempio risposta:
-SI           NO
-#  SI = invoca refresh_join_data(regione) + invoca calcola_domanda_energetica(comune, provincia)
-#  NO = invoca calcola_domanda_energetica(comune, provincia)
-"""
-
-#**DOMANDA CALCOLATA**
-
-"""
-Seleziona pannello che preferisci:
-    Marca          Modello    Potenza(Wp)  Efficienza(%)    Tecnologia   Prezzo  Superficie  Superifice+30%  
-1) Sonnenkraft       ...................
-2) FuturaSun         ...................
-...
-# Invoca get_pannelli() che ritorna un DataFrame e stampa quest'ultimo come specificato qui sopra prendentodi tutti i dati specificati 
-Esempio risposta:
-1
-Prendi la risposta controllando che sia un numero e sottrai 1 perchè indica l'indice del csv
-"""
-
-"""
-!!! Form da stampare solo se esiste già il tif (controllare se esiste il tif /offerta/grass_gis/irradiance_tif/irradianza_annua_provincia_comune.tif)
-Vuoi ricalcolare il tif dell'irradianza annua?
-Esempio risposta:
-SI           NO
-#  SI = invoca refresh_offerta_energetica(provincia, comune, indice_pannello)
-#  NO = invoca calcola_offerta_energetica(provincia, comune, indice_pannello)
-"""
-
-#**OFFERTA CALCOLATA**
-
-
-#Start del Model Builder
-"""
-crea_peb_neb(provincia, comune)   (creazione shp di input)
-ciclo_interazione_peb_neb(provincia, comune)   (creazione shp di output)
-"""
-
-
-import os
-import re
-import pandas as pd
-
-from utils import get_pannelli, get_regione_from_provincia
-
+from tabulate import tabulate
+from utils import get_pannelli, get_regione_from_provincia, safe_name, normalize_fabbricati_input, normalize_dsm_input, \
+    get_file_modification_date, configure_logging_globale
 from data_extraction_siape.siape_zc_range import run_estrazione_siape
 from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energetica, refresh_offerta_energetica
 from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica
@@ -78,81 +8,149 @@ from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_d
 from model_builder.creazione_peb_neb import crea_peb_neb
 from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb
 
-
-# ==================== FUNZIONI DI CONTROLLO INPUT ====================
-
-def normalizza_input_fabbricati():
-    while True:
-        cartella = input("Inserisci il nome della cartella dei fabbricati: ").strip()
-        if re.match(r'^fabbricati_[a-z]+_[a-z0-9\-]+$', cartella):
-            return cartella
-        print("Formato errato! Riprova.")
-
-def normalizza_DSM():
-    while True:
-        file_DSM = input("Inserisci il nome del file DSM: ").strip()
-        if re.match(r'^DSM_[a-z]+_[a-z0-9\-]+\.tif$', file_DSM):
-            return file_DSM
-        print("Formato errato! Riprova.")
-
-# ==================== MAIN ====================
-
 import os
+import logging
+import sys
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+def mostra_pannelli(df: pd.DataFrame) -> None:
+    """
+    Stampa una tabella ben formattata dei pannelli fotovoltaici disponibili.
+    La colonna 'Dimensione' viene rinominata in 'Superficie + 30%' solo per la visualizzazione.
+    """
+    colonne = [
+        'Marca', 'Modello', 'Potenza(Wp)', 'Efficienza(%)',
+        'Tecnologia', 'Prezzo', 'Superficie', 'Dimensione'
+    ]
+    df_vis = df[colonne].copy()
+    df_vis.index += 1  # numerazione da 1
+
+    # Rinomina colonna per la sola visualizzazione
+    df_vis = df_vis.rename(columns={"Dimensione": "Superficie + 30%"})
+
+    print("\nSeleziona il pannello che preferisci:\n")
+    print(tabulate(df_vis, headers="keys", tablefmt="grid", showindex=True))
 
 def main():
-    # Input cartella fabbricati
-    cartella_fabbricati = normalizza_input_fabbricati()
-    _, provincia, comune = cartella_fabbricati.split('_')
-    regione = get_regione_from_provincia(provincia)
+    # === CONFIGURAZIONE LOGGING ===
+    usa_log = input("Vuoi visualizzare i log delle operazioni? (SI/NO): ").strip().upper()
+    configure_logging_globale(attivo=(usa_log == "SI"))
+    if usa_log == "SI":
+        logger.info("Logging abilitato.")
 
-    # Input file DSM
-    file_DSM = normalizza_DSM()
+    print(
+        "\n--- PREPARAZIONE INPUT ---\n"
+        "Assicurati che:\n"
+        "- La directory 'FABBRICATI' contenga una sottodirectory chiamata 'fabbricati_provincia_comune'\n"
+        "  con i file (.shp, .dbf, .cpg, .shx, .prj) relativi ai fabbricati del comune di interesse.\n"
+        "  Il nome della directory deve usare solo lettere minuscole e trattini bassi al posto di spazi o apostrofi.\n"
+        "  Esempi:\n"
+        "    fabbricati_napoli_poggiomarino\n"
+        "    fabbricati_napoli_torre-annunziata\n"
+        "    fabbricati_napoli_pomigliano-d-arco\n"
+        "\n"
+        "- La directory 'input_dsm' contenga il file DSM relativo alla zona del comune.\n"
+        "  Il nome del file deve avere il formato: DSM_provincia_comune.tif\n"
+        "  Anche qui, usare solo minuscole e trattini bassi per spazi o apostrofi.\n"
+        "  Esempi:\n"
+        "    DSM_napoli_poggiomarino.tif\n"
+        "    DSM_napoli_torre-annunziata.tif\n"
+        "    DSM_napoli_pomigliano-d-arco.tif\n"
+        "\n"
+        "L'analisi verrà effettuata sull'intersezione tra i fabbricati e il DSM forniti.\n"
+    )
+
+    # Inserimento dati
+    comune = input("Inserisci il nome del comune: ")
+    com_safe = safe_name(comune)
+    provincia = input("Inserisci la provincia del comune: ")
+    prov_safe = safe_name(provincia)
+
+    # Normalizzazione e controllo fabbricati
+    fabbricati_ok = normalize_fabbricati_input(os.path.abspath("FABBRICATI"), prov_safe, com_safe)
+    dsm_ok = normalize_dsm_input(os.path.abspath("input_dsm"), prov_safe, com_safe)
+
+    if not fabbricati_ok or not dsm_ok:
+        print("Errore nella normalizzazione dei dati. Assicurati che i nomi delle directory e dei file siano corretti.")
+        sys.exit(1)
+
+    regione = get_regione_from_provincia(prov_safe)
+    logger.info("Input fabbricati e DSM correttamente normalizzati. Avvio dell'analisi...")
 
     # Aggiornamento SIAPE
+    siape_path = os.path.join("Data_Collection", "csv_tables-fase1", "epgl_nren_ren_co2_tabella_siape_zc_range.csv")
+    ultima_mod_siape = get_file_modification_date(siape_path)
+    print(f"Dati SIAPE - Ultimo aggiornamento: {ultima_mod_siape}")
     risposta_siape = input("Vuoi aggiornare dati delle prestazioni energetiche del SIAPE? (SI/NO): ").strip().upper()
     if risposta_siape == 'SI':
         run_estrazione_siape()
+    print("Analisi SIAPE completata.")
 
-    # Aggiornamento zone climatiche e calcolo domanda
-    risposta_zone = input("Vuoi aggiornare la lista dei comuni con le zone climatiche estratti da normattiva? (SI/NO): ").strip().upper()
+    # Aggiornamento zone climatiche
+    zona_path = os.path.join("Data_Collection", "csv_tables-fase1", "dati_normattiva.csv")
+    ultima_mod_zone = get_file_modification_date(zona_path)
+    print(f"Zone climatiche (Normattiva) - Ultimo aggiornamento: {ultima_mod_zone}")
+    risposta_zone = input(
+        "Vuoi aggiornare la lista dei comuni con le zone climatiche estratti da normattiva? (SI/NO): ").strip().upper()
     if risposta_zone == 'SI':
         refresh_join_data(regione)
-    calcola_domanda_energetica(comune, provincia)
+    print("Lista comuni aggiornata con le zone climatiche.")
+
+    # Calcolo domanda energetica
+    print("Calcolo della domanda energetica in corso...")
+    calcola_domanda_energetica(com_safe, prov_safe)
+    print("Domanda energetica calcolata con successo.")
 
     # Selezione pannello
     pannelli_df = get_pannelli()
+    # Mostra i pannelli disponibili
+    mostra_pannelli(pannelli_df)
 
-    # Normalizzazione intestazioni colonna
-    pannelli_df.columns = pannelli_df.columns.str.strip().str.replace('\ufeff', '')
-
-    print("\nSeleziona pannello che preferisci:")
-    for idx, row in pannelli_df.iterrows():
-        print(f"{idx+1}) {row['Marca']:15} {row['Modello']:12} {row['Potenza(Wp)']:>8}  {row['Efficienza(%)']:>8}  "
-              f"{row['Tecnologia']:15} {row['Prezzo']:>6}  {row['Superficie']:>5}  {row['Dimensione']:>5}")
-
+    # Selezione pannello da utilizzare
     while True:
         try:
-            indice_pannello = int(input("Seleziona il numero del pannello: ")) - 1
+            indice_pannello = int(input("Seleziona il numero del pannello che preferisci: ")) - 1
             if 0 <= indice_pannello < len(pannelli_df):
                 break
+            else:
+                print("Indice non valido. Riprova.")
         except ValueError:
-            pass
-        print("Valore non valido! Riprova.")
+            print("Input non valido. Inserisci un numero.")
+
+    # Mostra i dettagli del pannello selezionato
+    pannello_selezionato = pannelli_df.iloc[indice_pannello]
+    print("\nPannello selezionato:")
+    print(tabulate(pannello_selezionato.to_frame().T, headers="keys", tablefmt="grid", showindex=False))
+
 
     # Controllo esistenza tif irradiance
-    tif_path = os.path.join("offerta", "grass_gis", "irradiance_tif", f"irradianza_annua_{provincia}_{comune}.tif")
+    tif_path = os.path.join("offerta", "grass_gis", "irradiance_tif", f"irradianza_annua_{prov_safe}_{com_safe}_kwh.tif")
     if os.path.exists(tif_path):
+        ultima_mod_tif = get_file_modification_date(tif_path)
+        print(f"Irradianza annua - Ultimo aggiornamento: {ultima_mod_tif}")
         risposta_ricalcolo = input("Vuoi ricalcolare il tif dell'irradianza annua? (SI/NO): ").strip().upper()
         if risposta_ricalcolo == 'SI':
-            refresh_offerta_energetica(provincia, comune, indice_pannello)
+            print("Calcolo dell'offerta energetica in corso...")
+            refresh_offerta_energetica(prov_safe, com_safe, indice_pannello)
         else:
-            calcolo_offerta_energetica(provincia, comune, indice_pannello)
+            print("Calcolo dell'offerta energetica in corso...")
+            calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
     else:
-        calcolo_offerta_energetica(provincia, comune, indice_pannello)
+        print("Calcolo dell'offerta energetica in corso...")
+        calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
+
+    print("Offerta energetica calcolata con successo.")
 
     # Creazione e interazione PEB/NEB
-    crea_peb_neb(provincia, comune)
-    ciclo_interazione_peb_neb(provincia, comune)
+    print("Creazione PEB/NEB in corso...")
+    crea_peb_neb(prov_safe, com_safe)
+    print("Interazione PEB/NEB in corso...")
+    ciclo_interazione_peb_neb(prov_safe, com_safe)
+
+    print("Analisi completata con successo. I risultati sono dipsonibili nella cartella "
+          "'Data_Collection' e 'model_builder_shapefiles'.")
 
 
 # ==================== AVVIO ====================

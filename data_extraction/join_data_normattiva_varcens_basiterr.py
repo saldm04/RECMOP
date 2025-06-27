@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 from rapidfuzz import process, fuzz
 
-from utils import safe_name
+from utils import safe_name, configure_logging_if_main
 
 # =============================================================================
 # COSTANTI
@@ -33,14 +33,12 @@ PROV_DICT = {
 
 # Directory per output CSV per regione
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(BASE_DIR, '..', 'Data_Collection', 'csv_tables-fase1')
-OUTPUT_DIR = os.path.abspath(OUTPUT_DIR)
+OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "csv_tables-fase1"))
 
 # =============================================================================
 # SETUP LOGGING
 # =============================================================================
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -145,6 +143,9 @@ def salva_join_data(df: pd.DataFrame, regione_input: str, output_dir: str = OUTP
     filename = f"join_data_{safe_region}.csv"
     path = os.path.join(output_dir, filename)
     path = os.path.abspath(path)
+    if os.path.isfile(path):
+        os.remove(path)
+        logger.info("File esistente rimosso: %s", path)
     df.to_csv(path, index=False, sep=';', encoding='utf-8-sig')
     logger.info("Salvato CSV fase1 per %s in %s", regione_input, path)
     return path
@@ -160,8 +161,8 @@ def get_join_data(regione_input: str) -> pd.DataFrame:
         return pd.read_csv(path, sep=';', encoding='utf-8-sig')
     else:
         logger.info("File non trovato per %s: creo e salvo", regione_input)
-        df = estrai_join_data(regione_input)
-        salva_join_data(df, regione_input, output_dir=OUTPUT_DIR)
+        df = estrai_join_data(safe_region)
+        salva_join_data(df, safe_region, output_dir=OUTPUT_DIR)
         return df
 
 
@@ -184,5 +185,7 @@ def refresh_join_data(
 
 if __name__ == "__main__":
     regione = "campania"
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     df_joined = get_join_data(regione)
 

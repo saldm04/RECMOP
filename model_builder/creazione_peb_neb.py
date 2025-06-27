@@ -1,13 +1,11 @@
 import os
+import shutil
+
 import geopandas as gpd
 import logging
-from utils import safe_name
+from utils import safe_name, configure_logging_if_main
 
 # === CONFIGURAZIONE LOGGING ===
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # === COSTANTI PATH ASSOLUTI ===
@@ -50,6 +48,8 @@ def join_domanda_offerta(provincia: str, comune: str, gdf_domanda: gpd.GeoDataFr
         f"{provincia_safe}_{comune_safe}",
         f"domanda-offerta_energetica_{provincia_safe}_{comune_safe}"
     ))
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     join_path = os.path.join(out_dir, f"domanda_offerta_energetica_{provincia_safe}_{comune_safe}.shp")
 
@@ -115,9 +115,10 @@ def crea_peb_neb(provincia: str, comune: str):
     ))
     peb_dir = os.path.join(out_dir, "peb")
     neb_dir = os.path.join(out_dir, "neb")
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
     os.makedirs(peb_dir, exist_ok=True)
     os.makedirs(neb_dir, exist_ok=True)
-
     peb_path = os.path.join(peb_dir, f"PEB_{provincia_safe}_{comune_safe}.shp")
     neb_path = os.path.join(neb_dir, f"NEB_{provincia_safe}_{comune_safe}.shp")
 
@@ -131,4 +132,6 @@ def crea_peb_neb(provincia: str, comune: str):
 
 # --- ESEMPIO USO ---
 if __name__ == "__main__":
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     crea_peb_neb("salerno", "padula")

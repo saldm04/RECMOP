@@ -4,8 +4,9 @@ from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import pandas as pd
 
+from utils import configure_logging_if_main
+
 # Setup logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Costanti URL
@@ -20,8 +21,9 @@ BASE_ARTICOLO_URL = (
 NUM_ARTICOLI = 4
 
 # Path assoluto alla directory di output
-OUTPUT_DIR = os.path.abspath(os.path.join('..', 'Data_Collection', 'csv_tables-fase1'))
 OUTPUT_FILENAME = "dati_normattiva.csv"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "csv_tables-fase1"))
 
 
 def estrai_dati_normattiva() -> pd.DataFrame:
@@ -113,6 +115,9 @@ def salva_dati_normattiva(df: pd.DataFrame, output_dir: str = OUTPUT_DIR, nome_f
 
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, nome_file)
+    if os.path.exists(output_path):
+        os.remove(output_path)
+        logger.info(f"File esistente rimosso: {output_path}")
     df.to_csv(output_path, index=False, sep=";", encoding="utf-8-sig")
 
     logger.info(f"Dati salvati in: {output_path}")
@@ -145,4 +150,6 @@ def get_dati_normattiva() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     get_dati_normattiva()

@@ -7,13 +7,15 @@ import pandas as pd
 import os
 import logging
 
-logging.basicConfig(level=logging.INFO)
+from utils import configure_logging_if_main
+
 logger = logging.getLogger(__name__)
 
 # Costanti
 URL_SIAPE = "https://siape.enea.it/api/v1/aggr-data"
 
-OUTPUT_DIR = os.path.abspath("../Data_Collection/csv_tables-fase1")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "csv_tables-fase1"))
 OUTPUT_FILENAME = "epgl_nren_ren_co2_tabella_siape_zc_range.csv"
 
 ZONES = ['A', 'B', 'C', 'D', 'E', 'F']
@@ -109,6 +111,9 @@ def estrai_dati_siape() -> pd.DataFrame:
 def salva_dati_siape(df: pd.DataFrame, filename: str = OUTPUT_FILENAME, sep: str = ";") -> pd.DataFrame:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     percorso_output = os.path.join(OUTPUT_DIR, filename)
+    if os.path.exists(percorso_output):
+        os.remove(percorso_output)
+        logger.info(f"File esistente rimosso: {percorso_output}")
     df.to_csv(percorso_output, sep=sep, index=False, encoding='utf-8')
     logger.info(f"Dati salvati in: {percorso_output}")
     return df
@@ -143,4 +148,6 @@ def get_dati_siape() -> pd.DataFrame:
 
 
 if __name__ == '__main__':
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     get_dati_siape()

@@ -2,10 +2,8 @@ import os
 import logging
 import pandas as pd
 
-from utils import safe_name
+from utils import safe_name, configure_logging_if_main
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Base directory (cartella di questo file)
@@ -53,6 +51,9 @@ def salva_dati_variabili_censuarie(df: pd.DataFrame, cartella_output: str, nome_
     """
     os.makedirs(cartella_output, exist_ok=True)
     output_path = os.path.join(cartella_output, nome_file)
+    if os.path.exists(output_path):
+        os.remove(output_path)
+        logger.info(f"File esistente rimosso: {output_path}")
     df.to_csv(output_path, index=False, sep=sep, encoding=encoding)
     logger.info(f"Dati estratti e salvati in: {output_path}")
 
@@ -93,7 +94,7 @@ def get_dati_variabili_censuarie(regione: str) -> pd.DataFrame:
 
     if not os.path.exists(path_csv):
         logger.warning(f"File non trovato. Estrazione in corso: {path_csv}")
-        return run_estrazione_variabili_censuarie(regione)
+        return run_estrazione_variabili_censuarie(regione_safe)
 
     df = pd.read_csv(path_csv, sep=';', encoding='utf-8-sig')
     logger.info(f"Dati caricati da: {path_csv}")
@@ -102,4 +103,6 @@ def get_dati_variabili_censuarie(regione: str) -> pd.DataFrame:
 
 if __name__ == "__main__":
     # Esempio d’uso
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     get_dati_variabili_censuarie("campania")

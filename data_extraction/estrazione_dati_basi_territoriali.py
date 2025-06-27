@@ -2,10 +2,9 @@ import os
 import logging
 import pandas as pd
 from dbfread import DBF
-from utils import safe_name
+from utils import safe_name, configure_logging_if_main
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Logger del modulo
 logger = logging.getLogger(__name__)
 
 # Costanti
@@ -23,7 +22,7 @@ def trova_file_in_regione(regione: str, extension: str) -> str:
     """
     Trova un file con l'estensione specificata all'interno della cartella della regione.
     """
-    cartella = os.path.join(BASE_INPUT_DIR, regione)
+    cartella = os.path.join(BASE_INPUT_DIR, safe_name(regione))
     files = [f for f in os.listdir(cartella) if f.lower().endswith(extension)]
     if not files:
         raise FileNotFoundError(f"Nessun file {extension} trovato nella cartella: {cartella}")
@@ -52,13 +51,16 @@ def salva_dati_basi_territoriali(df: pd.DataFrame, cartella_output: str, nome_fi
                                  sep: str = ';', encoding: str = 'utf-8-sig') -> None:
     os.makedirs(cartella_output, exist_ok=True)
     output_path = os.path.join(cartella_output, nome_file)
+    if os.path.exists(output_path):
+        os.remove(output_path)
+        logger.info(f"File esistente rimosso: {output_path}")
     df.to_csv(output_path, index=False, sep=sep, encoding=encoding)
     logger.info(f"Dati salvati in: {output_path}")
 
 
 def run_estrazione_basi_territoriali(regione: str) -> pd.DataFrame:
-    input_path = trova_dbf_in_regione(regione)
     regione_safe = safe_name(regione)
+    input_path = trova_dbf_in_regione(regione_safe)
     nome_file = f"basi_territoriali_{regione_safe}.csv"
     df = estrai_dati_basi_territoriali(input_path)
     salva_dati_basi_territoriali(df, OUTPUT_DIR, nome_file)
@@ -71,7 +73,7 @@ def get_dati_basi_territoriali(regione: str) -> pd.DataFrame:
     path_csv = os.path.join(OUTPUT_DIR, nome_file)
     if not os.path.exists(path_csv):
         logger.warning(f"File CSV non trovato per {regione}, avvio estrazione.")
-        return run_estrazione_basi_territoriali(regione)
+        return run_estrazione_basi_territoriali(regione_safe)
     df = pd.read_csv(path_csv, sep=';', encoding='utf-8-sig')
     logger.info(f"Dati caricati da: {path_csv}")
     return df
@@ -82,5 +84,7 @@ def trova_shp_in_regione(regione: str) -> str:
 
 
 if __name__ == '__main__':
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     # Esempio di utilizzo
     df = get_dati_basi_territoriali("campania")

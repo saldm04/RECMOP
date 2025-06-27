@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import subprocess
 import logging
@@ -10,14 +11,10 @@ import pandas as pd
 from pvlib.clearsky import lookup_linke_turbidity
 from rasterstats import zonal_stats
 from data_extraction.calcola_area_poligoni import calcola_area
-from utils import safe_name
+from utils import safe_name, configure_logging_if_main
 
 # CONFIGURAZIONE LOG
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
-logger = logging.getLogger('irradiance_pipeline')
+logger = logging.getLogger(__name__)
 
 # Directory base del progetto (una volta per tutte)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -179,8 +176,6 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     gdf = calcola_area(gdf, nome_colonna='area_mq')
 
     panel_df = pd.read_csv(PANEL_DATA_PATH, delimiter=',', decimal=',', na_values=['n.a.', 'N.A.', 'na', 'NA', '-', ''])
-    print("Colonne nel DataFrame panel_df:", panel_df.columns.tolist())
-    print(panel_df.head())
     for col in ['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione']:
         panel_df[col] = pd.to_numeric(panel_df[col], errors='coerce')
     panel_df.dropna(subset=['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione'], inplace=True)
@@ -195,11 +190,12 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     gdf['Ptnz_tot'] = gdf['Ptnz_Wp'] * gdf['num_PV']
     gdf['Prod_kWh_y'] = gdf['irr_kwh_m2'] * (1 - gdf['Eff_pct']/100) * gdf['Ptnz_Wp'] * gdf['num_PV'] / 1000
 
-    # --- Output coerente: .../shapefiles/salerno_padula/offerta_energetica_salerno_padula/offerta_energetica_salerno_padula.shp
     subdir = f'{prov_safe}_{com_safe}'
     dirname = f'offerta_energetica_{prov_safe}_{com_safe}'
     outdir = os.path.join(SHAPE_OUT_DIR, subdir, dirname)
-    os.makedirs(outdir, exist_ok=True)
+    if os.path.exists(outdir):
+        shutil.rmtree(outdir)
+    os.makedirs(outdir)
     outshp = os.path.join(outdir, f'{dirname}.shp')
     gdf.to_file(outshp)
     logger.info(f'Shapefile offerta energetica salvato: {outshp}')
@@ -220,14 +216,13 @@ def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int):
     return calculate_building_irradiance(provincia, comune, idx_panel)
 
 def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int):
-    prov = safe_name(provincia)
-    com = safe_name(comune)
-    raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
     solar_radiation_pipeline(provincia, comune)
     return calculate_building_irradiance(provincia, comune, idx_panel)
 
 if __name__ == '__main__':
     # Esempio di esecuzione
+    # Abilita logging solo se eseguito standalone
+    configure_logging_if_main(__name__)
     prov, com, idx = 'Salerno', 'Padula', 0
     _ = calcolo_offerta_energetica(prov, com, idx)
     logger.info('Processo completato')

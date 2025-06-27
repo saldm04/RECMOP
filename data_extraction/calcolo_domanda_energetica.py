@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import pandas as pd
 import geopandas as gpd
 import logging
@@ -7,13 +9,8 @@ from .join_data_normattiva_varcens_basiterr import get_join_data
 from data_extraction_siape.siape_zc_range import get_dati_siape
 from .calcola_area_poligoni import calcola_area
 from .interrogazione_wfs_catastale import get_dati_catasto
-from utils import safe_name, get_regione_from_provincia
+from utils import safe_name, get_regione_from_provincia, configure_logging_if_main
 
-# === CONFIGURAZIONE LOGGING ===
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # === BASE DIR PER I PERCORSI RELATIVI AL PROGETTO ===
@@ -82,12 +79,12 @@ def calcola_coefficiente_domanda(df_join: pd.DataFrame, df_siape: pd.DataFrame, 
 def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
     logger.info("Inizio calcolo domanda energetica...")
 
-    comune = comune.strip().upper()
-    provincia = provincia.strip().upper()
-    regione = get_regione_from_provincia(provincia)
+    prov_safe = safe_name(provincia)
+    comm_safe = safe_name(comune)
+    regione = get_regione_from_provincia(prov_safe)
 
     # Carico dati unificati
-    df_join = get_join_data(regione.lower())
+    df_join = get_join_data(regione)
     logger.info("Dati unificati caricati.")
 
     # Carico dati SIAPE
@@ -95,8 +92,6 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
     logger.info("Dati SIAPE caricati.")
 
     # Path shapefile fabbricati
-    prov_safe = safe_name(provincia)
-    comm_safe = safe_name(comune)
     shp_dir = os.path.normpath(os.path.join(PROJECT_ROOT, "FABBRICATI", f"fabbricati_{prov_safe}_{comm_safe}"))
     if not os.path.isdir(shp_dir):
         raise FileNotFoundError(f"Directory shapefile non trovata: {shp_dir}")
@@ -124,7 +119,9 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
     subdir = f"{prov_safe}_{comm_safe}"
     dirname = f"domanda_energetica_{prov_safe}_{comm_safe}"
     out_dir = os.path.normpath(os.path.join(PROJECT_ROOT, "Data_Collection", "shapefiles", subdir, dirname))
-    os.makedirs(out_dir, exist_ok=True)
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
     out_shp = os.path.join(out_dir, f"{dirname}.shp")
 
     if gdf_fabbricati is not None:
@@ -143,5 +140,5 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
 
 
 if __name__ == '__main__':
-    # Esempio di utilizzo
+    configure_logging_if_main(__name__)
     gdf = calcola_domanda_energetica('PADULA', 'SALERNO')
