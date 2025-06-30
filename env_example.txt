@@ -1,4 +1,4 @@
 GRASS_BASE="C:\\Program Files\\GRASS GIS 8.4"
-GRASS_GISDB="C:\\Users\\tatod\\Documents\\grassdata"
+GRASS_GISDB="C:\\Users\\utente\\Documents\\grassdata"
 GRASS_LOCATION=auto_location
 GRASS_MAPSET=PERMANENT

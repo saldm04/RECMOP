@@ -4,7 +4,24 @@ import geopandas as gpd
 import pandas as pd
 from datetime import datetime
 
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
+
+def load_dot_env(env_path: str = ".env") -> None:
+    """
+    Carica le variabili d'ambiente da un file .env specificato.
+    Se non viene passato un path, cerca ".env" nella directory corrente.
+
+    :param env_path: Percorso al file .env (può essere assoluto o relativo)
+    """
+    abs_path = os.path.abspath(env_path)
+    if not os.path.exists(abs_path):
+        logger.warning(f"File .env non trovato nel percorso specificato: {abs_path}")
+        return
+
+    load_dotenv(dotenv_path=abs_path)
+    logger.info(f"Variabili d'ambiente caricate da: {abs_path}")
 
 def safe_name(nome: str) -> str:
     """Restituisce il nome in minuscolo e con spazi sostituiti da -."""

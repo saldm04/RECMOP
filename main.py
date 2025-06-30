@@ -7,6 +7,7 @@ from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetic
 from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
 from model_builder.creazione_peb_neb import crea_peb_neb
 from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb
+from utils import load_dot_env
 
 import os
 import logging
@@ -14,6 +15,8 @@ import sys
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+load_dot_env()
 
 def mostra_pannelli(df: pd.DataFrame) -> None:
     """

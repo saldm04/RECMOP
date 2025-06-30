@@ -3,7 +3,6 @@ import shutil
 import sys
 import subprocess
 import logging
-from dotenv import load_dotenv
 import rasterio
 import geopandas as gpd
 import calendar
@@ -11,7 +10,7 @@ import pandas as pd
 from pvlib.clearsky import lookup_linke_turbidity
 from rasterstats import zonal_stats
 from data_extraction.calcola_area_poligoni import calcola_area
-from utils import safe_name, configure_logging_if_main
+from utils import safe_name, configure_logging_if_main, load_dot_env
 
 # CONFIGURAZIONE LOG
 logger = logging.getLogger(__name__)
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 # Carica configurazioni da .env
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+load_dot_env(os.path.join(BASE_DIR, '.env'))
 GRASS_BASE = os.getenv('GRASS_BASE')
 GRASS_GISDB = os.getenv('GRASS_GISDB')
 GRASS_LOCATION = os.getenv('GRASS_LOCATION', 'auto_location')
@@ -42,6 +41,7 @@ def create_grass_location(grass_base, gisdb, location, epsg_code) -> None:
         logger.info(f'Creazione GRASS location {location} con EPSG:{epsg_code}')
         grass_bin = os.path.join(grass_base, 'grass84.bat')
         subprocess.run([grass_bin, '-c', f'EPSG:{epsg_code}', '-e', loc_path], check=True)
+        logger.info(f"Comando GRASS GIS per creazione location: {grass_bin} -c EPSG:{epsg_code} -e {loc_path}")
 
 
 def init_grass_environment(grass_base, gisdb, location, mapset):
@@ -202,8 +202,34 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     return gdf
 
 
+def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeline_func=None):
+    """
+    Calcola l'offerta energetica per ogni fabbricato, rilanciando la pipeline se il risultato è vuoto.
+    pipeline_func: funzione da chiamare per rigenerare i dati se necessario (es: solar_radiation_pipeline).
+    Max 2 tentativi; se ancora vuoto solleva RuntimeError.
+    """
+    tentativi = 2
+    for i in range(tentativi):
+        if pipeline_func and i > 0:
+            logger.info(f"Rilancio pipeline per {provincia}/{comune} (tentativo {i+1})")
+            pipeline_func(provincia, comune)
+        gdf = calculate_building_irradiance(provincia, comune, idx_panel)
+        if not gdf.empty:
+            return gdf
+        logger.warning(f"L'offerta energetica calcolata è vuota (tentativo {i+1}/{tentativi}).")
+        if pipeline_func is None:
+            break  # Se non posso rilanciare la pipeline, non ha senso continuare
+    logger.error(f"Offerta energetica vuota anche dopo {tentativi} tentativi per {provincia}/{comune}.")
+    raise RuntimeError(
+        f"Offerta energetica vuota anche dopo {tentativi} tentativi! Verificare input e pipeline per {provincia}/{comune}."
+    )
+
+
 def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int):
-    """Orchestratore: verifica raster ed esegui calcolo offerta."""
+    """
+    Orchestratore: verifica raster ed esegue calcolo offerta.
+    Se il raster non esiste lo genera, poi usa safe_building_irradiance.
+    """
     prov = safe_name(provincia)
     com = safe_name(comune)
     raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
@@ -213,16 +239,22 @@ def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int):
         solar_radiation_pipeline(provincia, comune)
     else:
         logger.info(f'Utilizzo raster esistente: {raster}')
-    return calculate_building_irradiance(provincia, comune, idx_panel)
+    return safe_building_irradiance(provincia, comune, idx_panel, pipeline_func=solar_radiation_pipeline)
+
 
 def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int):
+    """
+    Forza il ricalcolo completo della pipeline, poi usa safe_building_irradiance.
+    """
+    logger.info(f"Refresh completo dell’offerta energetica per {provincia}/{comune}")
     solar_radiation_pipeline(provincia, comune)
-    return calculate_building_irradiance(provincia, comune, idx_panel)
+    return safe_building_irradiance(provincia, comune, idx_panel, pipeline_func=solar_radiation_pipeline)
+
 
 if __name__ == '__main__':
     # Esempio di esecuzione
     # Abilita logging solo se eseguito standalone
     configure_logging_if_main(__name__)
     prov, com, idx = 'Salerno', 'Padula', 0
-    _ = calcolo_offerta_energetica(prov, com, idx)
+    _ = refresh_offerta_energetica(prov, com, idx)
     logger.info('Processo completato')
