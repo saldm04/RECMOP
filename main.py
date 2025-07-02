@@ -48,7 +48,7 @@ def main():
         "Assicurati che:\n"
         "- La directory 'FABBRICATI' contenga una sottodirectory chiamata 'fabbricati_provincia_comune'\n"
         "  con i file (.shp, .dbf, .cpg, .shx, .prj) relativi ai fabbricati del comune di interesse.\n"
-        "  Il nome della directory deve usare solo lettere minuscole e trattini bassi al posto di spazi o apostrofi.\n"
+        "  Il nome della directory deve usare solo lettere minuscole e trattini al posto di spazi o apostrofi.\n"
         "  Esempi:\n"
         "    fabbricati_napoli_poggiomarino\n"
         "    fabbricati_napoli_torre-annunziata\n"
@@ -56,7 +56,7 @@ def main():
         "\n"
         "- La directory 'input_dsm' contenga il file DSM relativo alla zona del comune.\n"
         "  Il nome del file deve avere il formato: DSM_provincia_comune.tif\n"
-        "  Anche qui, usare solo minuscole e trattini bassi per spazi o apostrofi.\n"
+        "  Anche qui, usare solo minuscole e trattini per spazi o apostrofi.\n"
         "  Esempi:\n"
         "    DSM_napoli_poggiomarino.tif\n"
         "    DSM_napoli_torre-annunziata.tif\n"
@@ -126,7 +126,6 @@ def main():
     pannello_selezionato = pannelli_df.iloc[indice_pannello]
     print("\nPannello selezionato:")
     print(tabulate(pannello_selezionato.to_frame().T, headers="keys", tablefmt="grid", showindex=False))
-
 
     # Controllo esistenza tif irradiance
     tif_path = os.path.join("offerta", "grass_gis", "irradiance_tif", f"irradianza_annua_{prov_safe}_{com_safe}_kwh.tif")

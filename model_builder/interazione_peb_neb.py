@@ -284,6 +284,10 @@ class InterazionePebNeb:
         ned2_final = ned2.drop(columns=[col for col in cols_to_drop if col in ned2.columns])
         ned2_final = ned2_final.rename(columns={'deficit2': 'deficit', 'ID_N2': 'ID_N'})
 
+        for df in [ncer_final, ned2_final, ped2_final, new_ned, new_ped]:
+            if 'Agr' in df.columns:
+                df.drop(columns=['Agr'], inplace=True)
+
         logger.info("Salvataggio risultati...")
         # Salva i risultati
         ncer_final.to_file(output_ncer_path, driver='GPKG')

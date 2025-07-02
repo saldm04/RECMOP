@@ -24,10 +24,17 @@ PROJECT_ROOT = os.path.normpath(os.path.join(BASE_DIR, ".."))  # /data_extractio
 def calcola_coefficiente_domanda(df_join: pd.DataFrame, df_siape: pd.DataFrame, comune: str, provincia: str) -> float:
     logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
 
+    # Applica la normalizzazione alle colonne
+    df_join['_COMUNE_NORM'] = df_join['COMUNE'].astype(str).apply(safe_name)
+    df_join['_PROVINCIA_NORM'] = df_join['PROVINCIA'].astype(str).apply(safe_name)
+
+    # Filtro sui valori normalizzati
     df_comune = df_join[
-        (df_join['COMUNE'].str.upper() == comune.upper()) &
-        (df_join['PROVINCIA'].str.upper() == provincia.upper())
+        (df_join['_COMUNE_NORM'] == comune) &
+        (df_join['_PROVINCIA_NORM'] == provincia)
         ]
+
+    df_join.drop(columns=['_COMUNE_NORM', '_PROVINCIA_NORM'], inplace=True)
 
     if df_comune.empty:
         raise ValueError(f"Nessun dato trovato per il comune {comune} nella provincia {provincia}.")
@@ -112,7 +119,7 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
     gdf_fabbricati = calcola_area(gdf_fabbricati, nome_colonna='area_mq')
 
     # Calcolo coefficiente domanda
-    coeff_dom = calcola_coefficiente_domanda(df_join, df_siape, comune, provincia)
+    coeff_dom = calcola_coefficiente_domanda(df_join, df_siape, comm_safe, prov_safe)
     logger.info(f"Coefficiente domanda per {comune} ({provincia}): {coeff_dom} kWh/mq/anno")
 
     # Path output shapefile
@@ -130,7 +137,7 @@ def calcola_domanda_energetica(comune: str, provincia: str) -> gpd.GeoDataFrame:
         logger.info("Colonna domanda energetica aggiunta.")
 
         # Aggiungo dati catastali
-        gdf_fabbricati = get_dati_catasto(gdf_fabbricati, provincia, comune)
+        gdf_fabbricati = get_dati_catasto(gdf_fabbricati, prov_safe, comm_safe)
 
         # Salvo shapefile di output
         gdf_fabbricati.to_file(out_shp, driver='ESRI Shapefile')

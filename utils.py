@@ -1,12 +1,23 @@
 import logging
 import os
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 from datetime import datetime
-
+import rasterio
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+def raster_is_empty(raster_path: str) -> bool:
+    """Ritorna True se tutte le celle sono NaN."""
+    try:
+        with rasterio.open(raster_path) as src:
+            arr = src.read(1)
+            return np.isnan(arr).all()
+    except Exception as e:
+        logger.error(f"Errore nell'apertura del raster {raster_path}: {e}")
+        return True  # Se il raster non si apre, consideralo vuoto
 
 def load_dot_env(env_path: str = ".env") -> None:
     """
