@@ -21,7 +21,7 @@ def join_domanda_offerta(provincia: str, comune: str, gdf_domanda: gpd.GeoDataFr
     logger.info(f"Colonne domanda: {list(gdf_domanda.columns)}")
     logger.info(f"Colonne offerta: {list(gdf_offerta.columns)}")
 
-    offerta_cols = [c for c in gdf_offerta.columns if c != 'geometry' and c != 'area_mq']
+    offerta_cols = [c for c in gdf_offerta.columns if c != 'geometry' and c != 'area']
 
     fid_count = [c for c in offerta_cols if c == 'FID']
     if len(fid_count) > 1:

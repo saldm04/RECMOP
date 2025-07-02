@@ -137,31 +137,38 @@ def get_pannelli() -> pd.DataFrame:
     return df_pannelli
 
 
-def normalize_fabbricati_input(dir_path: str, provincia: str, comune: str) -> bool:
+import os
+import logging
+import geopandas as gpd
+
+logger = logging.getLogger(__name__)
+
+def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) -> str:
     """
     Normalizza il contenuto di una directory contenente un singolo shapefile:
-    - Se esiste una sottodirectory chiamata 'fabbricati_{provincia}_{comune}', lavora su quella (altrimenti ritorna False)
-    - Verifica la presenza di un solo shapefile (altrimenti ritorna False)
-    - Controlla che il file contenga geometrie (altrimenti ritorna False)
-    - Controlla se esiste la colonna 'FID'; se assente, la crea
-    - Rimuove tutte le colonne tranne 'FID' e la geometria
+    - Se esiste una sottodirectory chiamata 'fabbricati_{provincia}_{comune}', lavora su quella (altrimenti solleva ValueError)
+    - Verifica la presenza di un solo shapefile (altrimenti solleva ValueError)
+    - Controlla che il file contenga geometrie (altrimenti solleva ValueError)
+    - In base alle colonne presenti mantiene solo quelle utili:
+      - Solo FID + geometria: ritorna 'zc_range'
+      - FID + geometria + sup_risc + vol_risc: ritorna 'zc_suris_volris'
+      - FID + geometria + sup_risc + vol_risc + sup_disp: ritorna 'zc_suris_volris_supdi'
     - Rinomina tutti i file nella cartella con il prefisso 'fabbricati_{provincia}_{comune}'
-      (ritorna True)
+    - In caso di errore solleva ValueError o RuntimeError.
     """
-
-    base_name = f"fabbricati_{provincia.lower()}_{comune.lower()}"
+    base_name = f"fabbricati_{provincia}_{comune}"
     target_dir = os.path.join(dir_path, base_name)
 
     if not os.path.isdir(target_dir):
         logger.warning(f"Directory non trovata: {target_dir}")
-        return False
+        raise ValueError(f"Directory non trovata: {target_dir}")
 
     files = os.listdir(target_dir)
     shp_files = [f for f in files if f.lower().endswith(".shp")]
 
     if len(shp_files) != 1:
         logger.warning(f"Attesi 1 shapefile, trovati {len(shp_files)}: {shp_files}")
-        return False
+        raise ValueError(f"Attesi 1 shapefile, trovati {len(shp_files)}: {shp_files}")
 
     shp_name = shp_files[0]
     shp_path = os.path.join(target_dir, shp_name)
@@ -170,26 +177,47 @@ def normalize_fabbricati_input(dir_path: str, provincia: str, comune: str) -> bo
         gdf = gpd.read_file(shp_path)
     except Exception as e:
         logger.error(f"Errore nel caricamento dello shapefile: {e}")
-        return False
+        raise RuntimeError(f"Errore nel caricamento dello shapefile: {e}")
 
     if gdf.empty or gdf.geometry.isna().all():
         logger.warning("Il file non contiene geometrie valide.")
-        return False
+        raise ValueError("Il file non contiene geometrie valide.")
 
+    # Determina le colonne da mantenere e la stringa di ritorno
+    has_sup_risc = "sup_risc" in gdf.columns
+    has_vol_risc = "vol_risc" in gdf.columns
+    has_sup_disp = "sup_disp" in gdf.columns
+
+    if has_sup_risc and has_vol_risc and has_sup_disp:
+        keep_cols = ["FID", "sup_risc", "vol_risc", "sup_disp", gdf.geometry.name]
+        return_string = "zc_suris_volris_supdi"
+    elif has_sup_risc and has_vol_risc:
+        keep_cols = ["FID", "sup_risc", "vol_risc", gdf.geometry.name]
+        return_string = "zc_suris_volris"
+    elif not has_sup_risc and not has_vol_risc and not has_sup_disp:
+        keep_cols = ["FID", gdf.geometry.name]
+        return_string = "zc_range"
+    else:
+        # Se c'è almeno una delle colonne ma la combinazione non è valida
+        raise ValueError(
+            "Colonne non coerenti: servono entrambi sup_risc e vol_risc (opzionale sup_disp), "
+            "oppure nessuna delle tre per 'zc_range'.")
+
+    # Controllo/aggiunta colonna FID
     if "FID" not in gdf.columns:
         logger.info("Colonna 'FID' assente: viene creata.")
         gdf.insert(0, "FID", range(len(gdf)))
     else:
         logger.info("Colonna 'FID' già presente.")
 
-    gdf = gdf[["FID", gdf.geometry.name]]
-    logger.info("Shapefile normalizzato con solo 'FID' e geometria.")
+    # Mantieni solo le colonne necessarie
+    gdf = gdf[[col for col in keep_cols if col in gdf.columns] + [gdf.geometry.name] if gdf.geometry.name not in keep_cols else keep_cols]
+    logger.info(f"Shapefile normalizzato con colonne: {gdf.columns.tolist()}.")
 
-    # Rimozione vecchi componenti
-    base_noext = shp_name.rsplit(".shp", 1)[0]
-    for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj"]:
-        path = os.path.join(target_dir, base_noext + ext)
-        if os.path.exists(path):
+    # Rimozione di tutti i file dalla cartella
+    for fname in os.listdir(target_dir):
+        path = os.path.join(target_dir, fname)
+        if os.path.isfile(path):
             os.remove(path)
             logger.debug(f"File rimosso: {path}")
 
@@ -207,29 +235,32 @@ def normalize_fabbricati_input(dir_path: str, provincia: str, comune: str) -> bo
         os.rename(old_path, new_path)
         logger.debug(f"File rinominato: {old_file} -> {new_name}")
 
-    logger.info(f"Normalizzazione completata per: {base_name}")
-    return True
+    logger.info(f"Normalizzazione completata per: {base_name} (tipo {return_string})")
+    return return_string
 
-def normalize_dsm_input(dir_path: str, provincia: str, comune: str) -> bool:
+def normalize_dsm_input(dir_path: str, provincia: str, comune: str) -> None:
     """
     Controlla se nella directory specificata è presente esattamente il file DSM_{provincia}_{comune}.tif.
 
+    Solleva:
+        ValueError se la directory non esiste.
+        FileNotFoundError se il file DSM non esiste.
     Restituisce:
-        True se il file esiste, False altrimenti.
+        None se tutto ok.
     """
     expected_name = f"DSM_{provincia}_{comune}.tif"
     file_path = os.path.join(dir_path, expected_name)
 
     if not os.path.isdir(dir_path):
         logger.warning(f"Directory non trovata: {dir_path}")
-        return False
+        raise ValueError(f"Directory non trovata: {dir_path}")
 
-    if os.path.isfile(file_path):
-        logger.info(f"File DSM trovato: {file_path}")
-        return True
-    else:
+    if not os.path.isfile(file_path):
         logger.warning(f"File DSM non trovato: {file_path}")
-        return False
+        raise FileNotFoundError(f"File DSM non trovato: {file_path}")
+
+    logger.info(f"File DSM trovato: {file_path}")
+    return None
 
 def get_file_modification_date(file_path: str) -> str:
     """

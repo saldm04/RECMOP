@@ -246,7 +246,7 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     stats = zonal_stats(gdf, raster, stats=['mean'])
     gdf['irr_kwh_m2'] = [s['mean'] for s in stats]
     gdf = gdf[gdf['irr_kwh_m2'] > 0]
-    gdf = calcola_area(gdf, nome_colonna='area_mq')
+    gdf = calcola_area(gdf, nome_colonna='area')
 
     panel_df = pd.read_csv(PANEL_DATA_PATH, delimiter=',', decimal=',', na_values=['n.a.', 'N.A.', 'na', 'NA', '-', ''])
     for col in ['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione']:
@@ -258,7 +258,7 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -
     gdf['Eff_pct'] = specs['Efficienza (%)']
     gdf['Dim_m2'] = specs['Dimensione']
     gdf['Prz_uni'] = specs['Prezzo']
-    gdf['num_PV'] = (gdf['area_mq'] / gdf['Dim_m2']).astype(int).clip(lower=0)
+    gdf['num_PV'] = (gdf['area'] / gdf['Dim_m2']).astype(int).clip(lower=0)
     gdf['Prz_tot'] = gdf['num_PV'] * gdf['Prz_uni']
     gdf['Ptnz_tot'] = gdf['Ptnz_Wp'] * gdf['num_PV']
     gdf['Prod_kWh_y'] = gdf['irr_kwh_m2'] * (1 - gdf['Eff_pct'] / 100) * gdf['Ptnz_Wp'] * gdf['num_PV'] / 1000

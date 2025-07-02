@@ -44,9 +44,9 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # ESTRAZIONE DATI
 # =============================================================================
-from .normattiva import get_dati_normattiva, run_estrazione_normattiva
-from .estrazione_dati_basi_territoriali import get_dati_basi_territoriali, run_estrazione_basi_territoriali
-from .estrazione_dati_variabili_censuarie import get_dati_variabili_censuarie, run_estrazione_variabili_censuarie
+from data_extraction.normattiva import get_dati_normattiva, run_estrazione_normattiva
+from data_extraction.estrazione_dati_basi_territoriali import get_dati_basi_territoriali, run_estrazione_basi_territoriali
+from data_extraction.estrazione_dati_variabili_censuarie import get_dati_variabili_censuarie, run_estrazione_variabili_censuarie
 
 
 

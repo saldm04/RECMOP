@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def calcola_area(gdf: gpd.GeoDataFrame, nome_colonna: str = "area_mq") -> gpd.GeoDataFrame:
+def calcola_area(gdf: gpd.GeoDataFrame, nome_colonna: str = "area") -> gpd.GeoDataFrame:
     """
     Aggiunge una colonna con l'area in metri quadrati al GeoDataFrame dei fabbricati.
 
@@ -12,7 +12,7 @@ def calcola_area(gdf: gpd.GeoDataFrame, nome_colonna: str = "area_mq") -> gpd.Ge
 
     Parameters:
         gdf (GeoDataFrame): GeoDataFrame contenente geometrie poligonali.
-        nome_colonna (str): Nome della colonna in cui salvare l'area (default "area_mq").
+        nome_colonna (str): Nome della colonna in cui salvare l'area (default "area").
 
     Returns:
         GeoDataFrame con colonna aggiuntiva contenente le aree in metri quadrati.
