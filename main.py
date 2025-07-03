@@ -3,7 +3,8 @@ from utils import get_pannelli, get_regione_from_provincia, safe_name, \
     normalize_dsm_input, \
     get_file_modification_date, configure_logging_globale, normalize_fabbricati_input_auto
 from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energetica, refresh_offerta_energetica
-from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica_zc_range
+from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica_zc_range, \
+    calcola_domanda_energetica_zc_suris_volris, calcola_domanda_energetica_zc_suris_volris_supdi
 from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
 from model_builder.creazione_peb_neb import crea_peb_neb
 from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb
@@ -63,6 +64,11 @@ def main():
         "    DSM_napoli_torre-annunziata.tif\n"
         "    DSM_napoli_pomigliano-d-arco.tif\n"
         "\n"
+        "Il tipo di analisi sulla domanda energetica dipenderà dalle colonne presenti nello shapefile dei fabbricati:\n"
+        "- Se contiene solo geometrie → verrà usato il modello base: Zona climatica e classe d'età\n"
+        "- Se contiene anche 'sup_risc' e 'vol_risc' → modello esteso: Zona climatica, Superficie utile riscaldata e volume riscaldato\n"
+        "- Se contiene anche 'sup_disp' oltre a 'sup_risc' e 'vol_risc' → modello completo: Zona climatica, Superficie utile riscaldata, volume riscaldato e superficie disperdente\n"
+        "\n"
         "L'analisi verrà effettuata sull'intersezione tra i fabbricati e il DSM forniti.\n"
     )
 
@@ -118,8 +124,19 @@ def main():
 
     # Calcolo domanda energetica
     print("Calcolo della domanda energetica in corso...")
-    calcola_domanda_energetica_zc_range(com_safe, prov_safe)
-    print("Domanda energetica calcolata con successo.")
+    try:
+        if fabbricati_tipo == "zc_range":
+            calcola_domanda_energetica_zc_range(com_safe, prov_safe)
+        elif fabbricati_tipo == "zc_suris_volris":
+            calcola_domanda_energetica_zc_suris_volris(com_safe, prov_safe)
+        elif fabbricati_tipo == "zc_suris_volris_supdi":
+            calcola_domanda_energetica_zc_suris_volris_supdi(com_safe, prov_safe)
+        else:
+            raise ValueError(f"Tipologia fabbricati non riconosciuta: {fabbricati_tipo}")
+        print("Domanda energetica calcolata con successo.")
+    except Exception as e:
+        print(f"Errore durante il calcolo della domanda energetica: {e}")
+        sys.exit(1)
 
     # Selezione pannello
     pannelli_df = get_pannelli()

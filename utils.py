@@ -136,13 +136,6 @@ def get_pannelli() -> pd.DataFrame:
     logger.info(f"File pannelli caricato correttamente con {len(df_pannelli)} righe.")
     return df_pannelli
 
-
-import os
-import logging
-import geopandas as gpd
-
-logger = logging.getLogger(__name__)
-
 def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) -> str:
     """
     Normalizza il contenuto di una directory contenente un singolo shapefile:

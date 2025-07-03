@@ -1,6 +1,5 @@
 import os
 import shutil
-
 import pandas as pd
 import geopandas as gpd
 import logging
@@ -352,7 +351,7 @@ def calcola_domanda_energetica(
     gdf_fabbricati = calcola_area(gdf_fabbricati, nome_colonna='area')
 
     subdir = f"{prov_safe}_{comm_safe}"
-    dirname = f"domanda_energetica_{prov_safe}_{comm_safe}{suffix}"
+    dirname = f"domanda_energetica_{prov_safe}_{comm_safe}"
     out_dir = os.path.normpath(os.path.join(PROJECT_ROOT, "Data_Collection", "shapefiles", subdir, dirname))
     if os.path.exists(out_dir):
         shutil.rmtree(out_dir)
@@ -371,4 +370,4 @@ def calcola_domanda_energetica(
 
 if __name__ == '__main__':
     configure_logging_if_main(__name__)
-    gdf = calcola_domanda_energetica_zc_range('giffoni valle piana', 'SALERNO')
+    gdf = calcola_domanda_energetica_zc_suris_volris_supdi("giffoni valle piana", "salerno")

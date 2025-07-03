@@ -1,6 +1,9 @@
+import hashlib
 import os
 import shutil
 import logging
+
+import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
 import geopandas as gpd
@@ -27,20 +30,53 @@ request_counter = 0
 # ========================
 # GENERA CENTROIDI
 # ========================
-def genera_centroidi_da_gdf(gdf_poligoni: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Calcola i centroidi del GeoDataFrame fornito, mantenendo la colonna 'id'."""
+def genera_centroidi_da_gdf(gdf_poligoni: gpd.GeoDataFrame, epsg_metrico: int = None) -> gpd.GeoDataFrame:
+    """
+    Calcola i centroidi del GeoDataFrame fornito, mantenendo la colonna 'id'.
+    Se il CRS è geografico, converte temporaneamente in un CRS metrico.
+    Permette di specificare manualmente l'EPSG metrico (es. 32632).
+    """
     logger.info("Calcolo dei centroidi dai poligoni.")
 
     if 'id' not in gdf_poligoni.columns:
         raise ValueError("Il GeoDataFrame deve contenere una colonna 'id'.")
 
-    centroids = gdf_poligoni.geometry.centroid
+    original_crs = gdf_poligoni.crs
+
+    # Funzione per determinare l’EPSG UTM più adatto
+    def get_best_utm_epsg(gdf: gpd.GeoDataFrame) -> int:
+        """
+        Restituisce il codice EPSG del sistema UTM più adatto per il GeoDataFrame fornito.
+        """
+        centroid = gdf.geometry.unary_union.centroid
+        lon, lat = centroid.x, centroid.y
+        zone_number = int((lon + 180) / 6) + 1
+        if lat >= 0:
+            return 32600 + zone_number  # emisfero nord
+        else:
+            return 32700 + zone_number  # emisfero sud
+
+    # Se il CRS non è proiettato, si converte temporaneamente
+    if original_crs is None or not original_crs.is_projected:
+        if epsg_metrico is None:
+            epsg_metrico = get_best_utm_epsg(gdf_poligoni)
+            logger.info(f"CRS geografico rilevato. Uso automatico del CRS metrico EPSG:{epsg_metrico} per calcolo centroidi.")
+        else:
+            logger.info(f"CRS geografico rilevato. Uso CRS metrico specificato EPSG:{epsg_metrico} per calcolo centroidi.")
+        gdf_temp = gdf_poligoni.to_crs(epsg=epsg_metrico)
+    else:
+        gdf_temp = gdf_poligoni
+
+    # Calcolo dei centroidi nel CRS metrico
+    centroids = gdf_temp.geometry.centroid
+
+    # Restituisci centroidi in EPSG:6706 (per WFS)
     centroids_gdf = gpd.GeoDataFrame(
         gdf_poligoni[['id']],
         geometry=centroids,
-        crs=gdf_poligoni.crs
-    )
-    centroids_gdf = centroids_gdf.to_crs(epsg=6706)
+        crs=gdf_temp.crs
+    ).to_crs(epsg=6706)
+
     return centroids_gdf
 
 # ========================
@@ -133,7 +169,7 @@ def salva_shapefile_catastale(gdf: gpd.GeoDataFrame, provincia: str, comune: str
 # ========================
 # ELABORAZIONE GEOdataframe
 # ========================
-def _process_geodataframe(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune: str) -> gpd.GeoDataFrame:
+def _process_geodataframe(gdf_poligoni: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Processa i poligoni: genera centroidi, effettua query catastali e associa i dati."""
     # Assicura colonna id
     if 'id' not in gdf_poligoni.columns:
@@ -167,25 +203,70 @@ def _process_geodataframe(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune
     # Ripristina CRS
     if merged.crs != crs_originale:
         merged = merged.set_crs(crs_originale, allow_override=True)
-
-    # Salva
-    salva_shapefile_catastale(merged, provincia, comune)
+        
     return merged
 
 # ========================
 # FUNZIONE GET
 # ========================
+
+def geom_hash(geom):
+    return hashlib.sha1(geom.wkb).hexdigest()
+
 def get_dati_catasto(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune: str) -> gpd.GeoDataFrame:
     """
-    Restituisce il GeoDataFrame arricchito con i dati catastali per il comune e provincia specificati.
-    Se esiste già lo shapefile, lo carica; altrimenti lo genera.
+    Restituisce il GeoDataFrame originale arricchito con i dati catastali
+    per il comune e provincia specificati, evitando ricalcoli ridondanti.
+    Mantiene invariato il CRS originale dei poligoni.
     """
+    crs_originale = gdf_poligoni.crs
     dir_path, shp_path = get_output_paths(provincia, comune)
+
     if os.path.exists(shp_path):
-        logger.info(f"Shapefile esistente trovato: {shp_path}. Caricamento dati.")
-        return gpd.read_file(shp_path)
-    logger.info("Nessun shapefile preesistente: avvio elaborazione dati catastali.")
-    return _process_geodataframe(gdf_poligoni, provincia, comune)
+        logger.info(f"Shapefile catastale già esistente: {shp_path}. Caricamento dati.")
+        gdf_catasto = gpd.read_file(shp_path).to_crs(crs_originale)
+
+        logger.info("Confronto geometrie tramite hash...")
+        catasto_hashes = set(gdf_catasto.geometry.map(geom_hash))
+        gdf_poligoni['geom_hash'] = gdf_poligoni.geometry.map(geom_hash)
+
+        gdf_poligoni_diff = gdf_poligoni[~gdf_poligoni['geom_hash'].isin(catasto_hashes)].copy()
+        gdf_poligoni_diff.drop(columns='geom_hash', inplace=True)
+
+        if not gdf_poligoni_diff.empty:
+            logger.info(f"Elaborazione di {len(gdf_poligoni_diff)} nuove geometrie.")
+            gdf_nuovi_dati = _process_geodataframe(gdf_poligoni_diff).to_crs(crs_originale)
+
+            gdf_unito = pd.concat([gdf_catasto, gdf_nuovi_dati], ignore_index=True)
+            gdf_unito = gpd.GeoDataFrame(gdf_unito, geometry='geometry', crs=crs_originale)
+
+            if 'geom_hash' in gdf_unito.columns:
+                gdf_unito = gdf_unito.drop(columns='geom_hash')
+
+            # Salva solo i dati catastali minimali in EPSG:6706
+            gdf_unito_shp = gdf_unito[['geometry', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']].copy()
+            salva_shapefile_catastale(gdf_unito_shp, provincia, comune)
+        else:
+            gdf_unito = gdf_catasto
+            logger.info("Nessuna nuova geometria da elaborare.")
+
+    else:
+        logger.info("Nessun shapefile preesistente: elaborazione completa.")
+        gdf_unito = _process_geodataframe(gdf_poligoni).to_crs(crs_originale)
+        gdf_unito_shp = gdf_unito[['geometry', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']].copy()
+        salva_shapefile_catastale(gdf_unito_shp, provincia, comune)
+
+    # Merge finale: arricchimento del GeoDataFrame originale
+    logger.info("Arricchimento finale di gdf_poligoni con dati catastali.")
+    gdf_unito['geom_hash'] = gdf_unito.geometry.map(geom_hash)
+    gdf_poligoni['geom_hash'] = gdf_poligoni.geometry.map(geom_hash)
+
+    gdf_finale = gdf_poligoni.merge(
+        gdf_unito[['geom_hash', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']],
+        on='geom_hash', how='left'
+    ).drop(columns=['geom_hash'])
+
+    return gdf_finale
 
 # ========================
 # FUNZIONE REFRESH
@@ -199,4 +280,6 @@ def refresh_dati_catasto(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune:
     if os.path.exists(dir_path):
         logger.info(f"Directory esistente {dir_path}: rimozione per refresh.")
         shutil.rmtree(dir_path)
-    return _process_geodataframe(gdf_poligoni, provincia, comune)
+    gdf = _process_geodataframe(gdf_poligoni)
+    salva_shapefile_catastale(gdf, provincia, comune)
+    return gdf
