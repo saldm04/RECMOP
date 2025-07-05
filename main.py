@@ -40,10 +40,17 @@ def mostra_pannelli(df: pd.DataFrame) -> None:
 
 def main():
     # === CONFIGURAZIONE LOGGING ===
-    usa_log = input("Vuoi visualizzare i log delle operazioni? (SI/NO): ").strip().upper()
-    configure_logging_globale(attivo=(usa_log == "SI"))
-    if usa_log == "SI":
-        logger.info("Logging abilitato.")
+    while True:
+        usa_log = input("Vuoi visualizzare i log delle operazioni? (SI/NO): ").strip().upper()
+        if usa_log == "SI":
+            configure_logging_globale(attivo=True)
+            logger.info("Logging abilitato.")
+            break
+        elif usa_log == "NO":
+            configure_logging_globale(attivo=False)
+            break
+        else:
+            print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
 
     print(
         "\n--- PREPARAZIONE INPUT ---\n"
@@ -105,22 +112,34 @@ def main():
     ultima_mod_siape = get_file_modification_date(siape_path)
     print(f"Dati SIAPE - Ultimo aggiornamento: {ultima_mod_siape}")
     if ultima_mod_siape != "File non trovato":
-        risposta_siape = input(
-            "Vuoi aggiornare dati delle prestazioni energetiche del SIAPE? (SI/NO): ").strip().upper()
-        if risposta_siape == 'SI':
-            run_estrazione_siape(fabbricati_tipo)
-            print("Analisi SIAPE completata.")
+        while True:
+            risposta_siape = input(
+                "Vuoi aggiornare dati delle prestazioni energetiche del SIAPE? (SI/NO): ").strip().upper()
+            if risposta_siape == "SI":
+                run_estrazione_siape(fabbricati_tipo)
+                print("Analisi SIAPE completata.")
+                break
+            elif risposta_siape == "NO":
+                break
+            else:
+                print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
 
     # Aggiornamento zone climatiche
     zona_path = os.path.join("Data_Collection", "csv_tables-fase1", "dati_normattiva.csv")
     ultima_mod_zone = get_file_modification_date(zona_path)
     print(f"Zone climatiche (Normattiva) - Ultimo aggiornamento: {ultima_mod_zone}")
     if ultima_mod_zone != "File non trovato":
-        risposta_zone = input(
-            "Vuoi aggiornare la lista dei comuni con le zone climatiche estratti da normattiva? (SI/NO): ").strip().upper()
-        if risposta_zone == 'SI':
-            refresh_join_data(regione)
-            print("Lista comuni aggiornata con le zone climatiche.")
+        while True:
+            risposta_zone = input(
+                "Vuoi aggiornare la lista dei comuni con le zone climatiche estratti da normattiva? (SI/NO): ").strip().upper()
+            if risposta_zone == "SI":
+                refresh_join_data(regione)
+                print("Lista comuni aggiornata con le zone climatiche.")
+                break
+            elif risposta_zone == "NO":
+                break
+            else:
+                print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
 
     # Calcolo domanda energetica
     print("Calcolo della domanda energetica in corso...")
@@ -164,28 +183,60 @@ def main():
     if os.path.exists(tif_path):
         ultima_mod_tif = get_file_modification_date(tif_path)
         print(f"Irradianza annua - Ultimo aggiornamento: {ultima_mod_tif}")
-        risposta_ricalcolo = input("Vuoi ricalcolare il tif dell'irradianza annua? (SI/NO): ").strip().upper()
-        if risposta_ricalcolo == 'SI':
-            print("Calcolo dell'offerta energetica in corso...")
-            refresh_offerta_energetica(prov_safe, com_safe, indice_pannello)
-        else:
-            print("Calcolo dell'offerta energetica in corso...")
-            calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
+        while True:
+            risposta_ricalcolo = input("Vuoi ricalcolare il tif dell'irradianza annua? (SI/NO): ").strip().upper()
+            if risposta_ricalcolo == "SI":
+                print("Calcolo dell'offerta energetica in corso...")
+                refresh_offerta_energetica(prov_safe, com_safe, indice_pannello)
+                break
+            elif risposta_ricalcolo == "NO":
+                print("Calcolo dell'offerta energetica in corso...")
+                calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
+                break
+            else:
+                print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
     else:
         print("Calcolo dell'offerta energetica in corso...")
         calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
 
     print("Offerta energetica calcolata con successo.")
 
-    # Creazione e interazione PEB/NEB
+    # Richiesta della soglia di autosufficienza all'utente
+    while True:
+        try:
+            percentuale_autosuff = float(input(
+                "Inserisci la soglia di autosufficienza (percentuale tra 0 e 100):\n"
+                "La soglia di autosufficienza indica la quota minima di deficit energetico\n"
+                "che deve essere coperta dal surplus per permettere l’aggregazione tra zone.\n"
+                "Ad esempio, inserendo 55, le aggregazioni saranno possibili solo se almeno il 55% del deficit può essere coperto dal surplus.\n"
+                "Valore desiderato: "
+            ))
+            if 0 < percentuale_autosuff < 100:
+                break
+            else:
+                print("Inserisci un valore compreso tra 0 e 100 (esclusi).")
+        except ValueError:
+            print("Input non valido. Inserisci un numero.")
+
+    # Chiedo all'utente se vuole specificare la distanza massima a ogni iterazione
+    while True:
+        risposta = input("Vuoi specificare una distanza massima per ogni iterazione? (SI/NO): ").strip().upper()
+        if risposta == "SI":
+            distanza_iterativa = True
+            break
+        elif risposta == "NO":
+            distanza_iterativa = False
+            break
+        else:
+            print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
+
+    # Chiedi provincia/comune come al solito, poi...
     print("Creazione PEB/NEB in corso...")
     crea_peb_neb(prov_safe, com_safe)
     print("Interazione PEB/NEB in corso...")
-    ciclo_interazione_peb_neb(prov_safe, com_safe)
-
-    print("Analisi completata con successo. I risultati sono dipsonibili nella cartella "
+    ciclo_interazione_peb_neb(prov_safe, com_safe, percentuale_autosuff, distanza_iterativa=distanza_iterativa)
+    print("Analisi completata con successo. I risultati sono disponibili nella cartella "
           "'Data_Collection' e 'model_builder_shapefiles'.")
-
 
 # ==================== AVVIO ====================
 

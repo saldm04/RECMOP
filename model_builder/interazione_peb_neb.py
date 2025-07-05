@@ -4,7 +4,7 @@ Script: interazione_peb_neb.py (versione aggiornata con nuove funzionalità)
 
 Descrizione:
     Riproduce la logica del modello QGIS "INTERAZIONE PEB-NEB" con le nuove funzionalità
-    di autosufficienza (55%) e creazione NCER, mantenendo la struttura dei percorsi originale.
+    di autosufficienza (percentuale variabile) e creazione NCER, mantenendo la struttura dei percorsi originale.
 """
 import logging
 import os
@@ -15,7 +15,7 @@ import pandas as pd
 import geopandas as gpd
 from sklearn.neighbors import NearestNeighbors
 import shutil
-from utils import safe_name, configure_logging_if_main
+from utils import safe_name, configure_logging_if_main, get_best_utm_epsg
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -63,32 +63,57 @@ class InterazionePebNeb:
             logger.warning("Rimosse %d feature invalide da '%s'", removed, layer_name)
         return gdf
 
-    def find_nearest_neighbors(self, gdf_positive: gpd.GeoDataFrame, gdf_negative: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-        """Trova i vicini più prossimi tra layer positivi e negativi."""
-        # Estrai coordinate dei centroidi
-        pos_coords = np.array([[geom.centroid.x, geom.centroid.y] for geom in gdf_positive.geometry])
-        neg_coords = np.array([[geom.centroid.x, geom.centroid.y] for geom in gdf_negative.geometry])
+    def find_nearest_neighbors(self,
+            gdf_positive: gpd.GeoDataFrame,
+            gdf_negative: gpd.GeoDataFrame,
+            distanza_massima: float = None
+    ) -> gpd.GeoDataFrame:
+        """
+        Trova il vicino più prossimo tra due layer, filtrando per distanza massima (metri).
+        Gestisce automaticamente la trasformazione temporanea a CRS metrico.
+        Il risultato viene restituito nel CRS originale di gdf_positive.
+        """
+        original_crs = gdf_positive.crs
 
-        # Trova il vicino più prossimo per ogni elemento positivo
+        # Trova EPSG metrico se serve
+        if original_crs is not None and original_crs.is_projected:
+            gdf_pos_m = gdf_positive
+            gdf_neg_m = gdf_negative.to_crs(original_crs) if gdf_negative.crs != original_crs else gdf_negative
+        else:
+            epsg_metrico = get_best_utm_epsg(gdf_positive)
+            gdf_pos_m = gdf_positive.to_crs(epsg=epsg_metrico)
+            gdf_neg_m = gdf_negative.to_crs(epsg=epsg_metrico)
+
+        # Calcolo centroidi
+        pos_coords = np.array([[geom.centroid.x, geom.centroid.y] for geom in gdf_pos_m.geometry])
+        neg_coords = np.array([[geom.centroid.x, geom.centroid.y] for geom in gdf_neg_m.geometry])
+
+        # Calcolo nearest neighbors
         nbrs = NearestNeighbors(n_neighbors=1, algorithm='auto').fit(neg_coords)
         distances, indices = nbrs.kneighbors(pos_coords)
 
-        # Crea il join
+        # Costruisci output come join by nearest QGIS
         joined_data = []
-        for i, (pos_idx, neg_idx) in enumerate(zip(range(len(gdf_positive)), indices.flatten())):
-            pos_row = gdf_positive.iloc[pos_idx].copy()
-            neg_row = gdf_negative.iloc[neg_idx].copy()
+        for i, (pos_idx, neg_idx) in enumerate(zip(range(len(gdf_pos_m)), indices.flatten())):
+            dist = distances[i][0]
+            if distanza_massima is not None and dist > distanza_massima:
+                continue  # salta join oltre soglia
 
-            # Combina i dati
+            pos_row = gdf_pos_m.iloc[pos_idx].copy()
+            neg_row = gdf_neg_m.iloc[neg_idx].copy()
             combined_row = pos_row.copy()
             for col in neg_row.index:
                 if col != 'geometry':
                     combined_row[col] = neg_row[col]
-            combined_row['distance'] = distances[i][0]
-
+            combined_row['distance'] = dist
             joined_data.append(combined_row)
 
-        return gpd.GeoDataFrame(joined_data, crs=gdf_positive.crs)
+        result_gdf = gpd.GeoDataFrame(joined_data, crs=gdf_pos_m.crs)
+
+        # Riconverti al CRS originale se necessario
+        if original_crs is not None and not result_gdf.crs == original_crs:
+            result_gdf = result_gdf.to_crs(original_crs)
+        return result_gdf
 
     def calculate_field(self, gdf: gpd.GeoDataFrame, field_name: str, formula_func, field_type: str = 'float64') -> gpd.GeoDataFrame:
         """Calcola un nuovo campo basato su una formula."""
@@ -143,7 +168,8 @@ class InterazionePebNeb:
 
     def process_algorithm(self, input_positivo_path: str, input_negativo_path: str,
                           output_ncer_path: str, output_ned2_path: str, output_ped2_path: str,
-                          new_ned_path: str, new_ped_path: str) -> Dict[str, gpd.GeoDataFrame]:
+                          new_ned_path: str, new_ped_path: str, percentuale_autosuff = 55,
+                          distanza_max = None) -> Dict[str, gpd.GeoDataFrame]:
         """
         Algoritmo principale che replica la logica del Model Builder QGIS con le nuove funzionalità.
         """
@@ -164,7 +190,7 @@ class InterazionePebNeb:
         gdf_negative = self.validate_and_clean_geometry(gdf_negative, "ID_N", "input_negativo")
 
         logger.info("Step 1: Join dei vicini più prossimi...")
-        joined = self.find_nearest_neighbors(gdf_positive, gdf_negative)
+        joined = self.find_nearest_neighbors(gdf_positive, gdf_negative, distanza_max)
 
         logger.info("Step 2: Calcolo DELTA...")
         joined = self.calculate_field(joined, 'DELTA', lambda df: df['surplus'] + df['deficit'])
@@ -187,11 +213,11 @@ class InterazionePebNeb:
         filtered = self.calculate_field(filtered, 'Autosuff',
                                         lambda df: (df['surplus'] / df['deficit']) * -1)
 
-        # Filtra per autosufficienza tra 0.55 e 1
+        # Filtra per autosufficienza tra 0.55 e 1 di default, ma può essere modificato
         autosuff_filter = self.extract_by_expression(filtered,
-                                                     lambda df: (df['Autosuff'] > 0.55) & (df['Autosuff'] < 1))
+                                                     lambda df: (df['Autosuff'] > percentuale_autosuff/100) & (df['Autosuff'] < 1))
         autosuff_fail = self.extract_by_expression(filtered,
-                                                   lambda df: ~((df['Autosuff'] > 0.55) & (df['Autosuff'] < 1)))
+                                                   lambda df: ~((df['Autosuff'] > percentuale_autosuff/100) & (df['Autosuff'] < 1)))
 
         logger.info("Step 6: Creazione NCER...")
         ncer_p = self.join_attributes(gdf_positive, autosuff_filter, 'ID_P', 'ID_P',
@@ -316,58 +342,7 @@ def save_if_not_empty(gdf: gpd.GeoDataFrame, path: str, driver: str = 'GPKG', **
         if os.path.exists(path):
             os.remove(path)
 
-
-def processa_interazione_peb_neb(provincia: str, comune: str) -> None:
-    prov_norm = safe_name(provincia)
-    com_norm = safe_name(comune)
-    prov_com = f"{prov_norm}_{com_norm}"
-
-    BASE_DIR = os.path.abspath(os.path.join("..", "model_builder_shapefiles", prov_com))
-
-    # Percorsi input
-    input_neg_dir = os.path.join(BASE_DIR, "input", "neb")
-    input_pos_dir = os.path.join(BASE_DIR, "input", "peb")
-    input_neg = os.path.join(input_neg_dir, f"NEB_{prov_norm}_{com_norm}.shp")
-    input_pos = os.path.join(input_pos_dir, f"PEB_{prov_norm}_{com_norm}.shp")
-
-    # Percorsi output
-    output_ncer = os.path.join(BASE_DIR, "output", "ncer", f"ncer_{prov_norm}_{com_norm}.gpkg")
-    output_ned2 = os.path.join(BASE_DIR, "output", "neb", f"outneb_{prov_norm}_{com_norm}.gpkg")
-    output_ped2 = os.path.join(BASE_DIR, "output", "peb", f"outpeb_{prov_norm}_{com_norm}.gpkg")
-    new_ned = os.path.join(BASE_DIR, "new", "neb", f"newneb_{prov_norm}_{com_norm}.gpkg")
-    new_ped = os.path.join(BASE_DIR, "new", "peb", f"newpeb_{prov_norm}_{com_norm}.gpkg")
-
-    # Crea le directory di output se non esistono
-    for path in [output_ncer, output_ned2, output_ped2, new_ned, new_ped]:
-        outdir = os.path.dirname(path)
-        os.makedirs(outdir, exist_ok=True)
-
-    processor = InterazionePebNeb()
-
-    try:
-        results = processor.process_algorithm(
-            input_positivo_path=os.path.abspath(input_pos),
-            input_negativo_path=os.path.abspath(input_neg),
-            output_ncer_path=os.path.abspath(output_ncer),
-            output_ned2_path=os.path.abspath(output_ned2),
-            output_ped2_path=os.path.abspath(output_ped2),
-            new_ned_path=os.path.abspath(new_ned),
-            new_ped_path=os.path.abspath(new_ped)
-        )
-
-        logger.info("\n=== RISULTATI ===")
-        for name, gdf in results.items():
-            logger.info("%s: %d features", name, len(gdf))
-            logger.info("Colonne: %s", list(gdf.columns))
-            logger.info("CRS: %s", gdf.crs)
-            logger.info("-" * 50)
-
-    except Exception as e:
-        logger.error("Errore durante l'elaborazione: %s", e, exc_info=True)
-        sys.exit(1)
-
-
-def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
+def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff = 55, distanza_iterativa=False) -> None:
     prov_norm = safe_name(provincia)
     com_norm = safe_name(comune)
     prov_com = f"{prov_norm}_{com_norm}"
@@ -412,6 +387,25 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
         new_ned = os.path.join(output_dir, f"newneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
         new_ped = os.path.join(output_dir, f"newpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
 
+        # Richiesta distanza massima se modalità interattiva
+        if distanza_iterativa:
+            while True:
+                user_input = input(
+                    f"[Iterazione {n_iter}] Inserisci la distanza massima in metri (premi invio per nessun limite): ").strip()
+                if user_input == "":
+                    distanza_max = None
+                    break
+                try:
+                    distanza_max = float(user_input)
+                    if distanza_max > 0:
+                        break
+                    else:
+                        print("La distanza deve essere maggiore di zero o lascia vuoto per nessun limite.")
+                except ValueError:
+                    print("Valore non valido. Inserisci un numero o lascia vuoto per nessun limite.")
+        else:
+            distanza_max = None
+
         processor = InterazionePebNeb()
         results = processor.process_algorithm(
             input_positivo_path=os.path.abspath(input_pos),
@@ -420,7 +414,9 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str) -> None:
             output_ned2_path=os.path.abspath(output_ned2),
             output_ped2_path=os.path.abspath(output_ped2),
             new_ned_path=os.path.abspath(new_ned),
-            new_ped_path=os.path.abspath(new_ped)
+            new_ped_path=os.path.abspath(new_ped),
+            percentuale_autosuff=percentuale_autosuff,
+            distanza_max=distanza_max
         )
 
         ncer = results['NCER'].copy()

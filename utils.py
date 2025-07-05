@@ -291,3 +291,15 @@ def configure_logging_if_main(name: str, level: int = logging.INFO) -> None:
             level=level,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
+
+def get_best_utm_epsg(gdf: gpd.GeoDataFrame) -> int:
+    """
+    Restituisce l'EPSG UTM più adatto sulla base del centroide del GeoDataFrame.
+    """
+    centroid = gdf.geometry.unary_union.centroid
+    lon, lat = centroid.x, centroid.y
+    zone_number = int((lon + 180) / 6) + 1
+    if lat >= 0:
+        return 32600 + zone_number  # emisfero nord
+    else:
+        return 32700 + zone_number  # emisfero sud

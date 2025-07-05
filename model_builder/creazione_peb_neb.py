@@ -21,22 +21,20 @@ def join_domanda_offerta(provincia: str, comune: str, gdf_domanda: gpd.GeoDataFr
     logger.info(f"Colonne domanda: {list(gdf_domanda.columns)}")
     logger.info(f"Colonne offerta: {list(gdf_offerta.columns)}")
 
-    offerta_cols = [c for c in gdf_offerta.columns if c != 'geometry' and c != 'area']
+    # Colonne da escludere sempre
+    exclude_cols = {'geometry', 'area'}
 
-    fid_count = [c for c in offerta_cols if c == 'FID']
-    if len(fid_count) > 1:
-        first = True
-        new_cols = []
-        for c in offerta_cols:
-            if c == 'FID':
-                if first:
-                    new_cols.append(c)
-                    first = False
-            else:
-                new_cols.append(c)
-        offerta_cols = new_cols
+    # Colonne in comune da evitare nel merge per evitare conflitti
+    comuni_da_escludere = set(gdf_domanda.columns) & set(gdf_offerta.columns) - {'FID'}
+    offerta_cols = [col for col in gdf_offerta.columns if col not in comuni_da_escludere and col not in exclude_cols]
 
-    logger.info("Eseguo inner join su FID senza suffissi nei nomi colonne...")
+    # Mantieni 'FID' per il join
+    if 'FID' in gdf_offerta.columns:
+        offerta_cols = ['FID'] + [col for col in offerta_cols if col != 'FID']
+
+    logger.info(f"Colonne selezionate per offerta dopo pulizia: {offerta_cols}")
+
+    logger.info("Eseguo inner join su FID evitando conflitti di colonna...")
     gdf_join = gdf_domanda.merge(
         gdf_offerta[offerta_cols],
         on='FID',

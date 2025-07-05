@@ -8,7 +8,7 @@ import requests
 import xml.etree.ElementTree as ET
 import geopandas as gpd
 
-from utils import safe_name
+from utils import safe_name, get_best_utm_epsg
 
 # ========================
 # CONFIGURAZIONE LOGGING
@@ -42,19 +42,6 @@ def genera_centroidi_da_gdf(gdf_poligoni: gpd.GeoDataFrame, epsg_metrico: int = 
         raise ValueError("Il GeoDataFrame deve contenere una colonna 'id'.")
 
     original_crs = gdf_poligoni.crs
-
-    # Funzione per determinare l’EPSG UTM più adatto
-    def get_best_utm_epsg(gdf: gpd.GeoDataFrame) -> int:
-        """
-        Restituisce il codice EPSG del sistema UTM più adatto per il GeoDataFrame fornito.
-        """
-        centroid = gdf.geometry.unary_union.centroid
-        lon, lat = centroid.x, centroid.y
-        zone_number = int((lon + 180) / 6) + 1
-        if lat >= 0:
-            return 32600 + zone_number  # emisfero nord
-        else:
-            return 32700 + zone_number  # emisfero sud
 
     # Se il CRS non è proiettato, si converte temporaneamente
     if original_crs is None or not original_crs.is_projected:
