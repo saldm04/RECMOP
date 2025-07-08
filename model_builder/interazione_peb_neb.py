@@ -63,7 +63,8 @@ class InterazionePebNeb:
             logger.warning("Rimosse %d feature invalide da '%s'", removed, layer_name)
         return gdf
 
-    def find_nearest_neighbors(self,
+    def find_nearest_neighbors(
+            self,
             gdf_positive: gpd.GeoDataFrame,
             gdf_negative: gpd.GeoDataFrame,
             distanza_massima: float = None
@@ -108,7 +109,18 @@ class InterazionePebNeb:
             combined_row['distance'] = dist
             joined_data.append(combined_row)
 
-        result_gdf = gpd.GeoDataFrame(joined_data, crs=gdf_pos_m.crs)
+        # Crea il GeoDataFrame vuoto con le colonne giuste se non ci sono join
+        if joined_data:
+            result_gdf = gpd.GeoDataFrame(joined_data, crs=gdf_pos_m.crs)
+        else:
+            # Crea tutte le colonne previste, più la geometry
+            col_pos = list(gdf_pos_m.columns)
+            col_neg = [col for col in gdf_neg_m.columns if col not in col_pos and col != 'geometry']
+            columns = col_pos + col_neg + ['distance']
+            # Inizializza tutte le colonne a vuoto, incluso 'geometry'
+            data = {col: [] for col in columns}
+            data['geometry'] = []
+            result_gdf = gpd.GeoDataFrame(data, geometry='geometry', crs=gdf_pos_m.crs)
 
         # Riconverti al CRS originale se necessario
         if original_crs is not None and not result_gdf.crs == original_crs:
@@ -342,7 +354,8 @@ def save_if_not_empty(gdf: gpd.GeoDataFrame, path: str, driver: str = 'GPKG', **
         if os.path.exists(path):
             os.remove(path)
 
-def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff = 55, distanza_iterativa=False) -> None:
+def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff=55,
+                                  distanza_iterativa=False, distanza_max=None) -> None:
     prov_norm = safe_name(provincia)
     com_norm = safe_name(comune)
     prov_com = f"{prov_norm}_{com_norm}"
@@ -393,18 +406,18 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff 
                 user_input = input(
                     f"[Iterazione {n_iter}] Inserisci la distanza massima in metri (premi invio per nessun limite): ").strip()
                 if user_input == "":
-                    distanza_max = None
+                    distanza_max_iter = None
                     break
                 try:
-                    distanza_max = float(user_input)
-                    if distanza_max > 0:
+                    distanza_max_iter = float(user_input)
+                    if distanza_max_iter > 0:
                         break
                     else:
                         print("La distanza deve essere maggiore di zero o lascia vuoto per nessun limite.")
                 except ValueError:
                     print("Valore non valido. Inserisci un numero o lascia vuoto per nessun limite.")
         else:
-            distanza_max = None
+            distanza_max_iter = distanza_max  # Usa il valore fisso o None
 
         processor = InterazionePebNeb()
         results = processor.process_algorithm(
@@ -416,7 +429,7 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff 
             new_ned_path=os.path.abspath(new_ned),
             new_ped_path=os.path.abspath(new_ped),
             percentuale_autosuff=percentuale_autosuff,
-            distanza_max=distanza_max
+            distanza_max=distanza_max_iter
         )
 
         ncer = results['NCER'].copy()
@@ -424,6 +437,11 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff 
         ned2_gdf = results['NED2']
 
         ncer['iterazione'] = n_iter
+
+        n_ncer = len(ncer)
+        n_peb = len(ped2_gdf)
+        n_neb = len(ned2_gdf)
+        print(f"[Iterazione {n_iter}] CER generati: {n_ncer}, PEB rimasti: {n_peb}, NEB rimasti: {n_neb}")
 
         if not ncer.empty:
             if not os.path.exists(ncer_path):
@@ -467,9 +485,22 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff 
             except Exception as e:
                 logger.warning(f"Impossibile eliminare {last_ncer_gpkg_path}: {e}")
 
+    try:
+        total_ncer = total_peb = total_neb = 0
+        if os.path.exists(ncer_path):
+            total_ncer = len(gpd.read_file(ncer_path, layer=ncer_layer_name))
+        if os.path.exists(output_ped2):
+            total_peb = len(gpd.read_file(output_ped2))
+        if os.path.exists(output_ned2):
+            total_neb = len(gpd.read_file(output_ned2))
+        print(f"\n=== Totali Finali ===")
+        print(f"Totale CER: {total_ncer}")
+        print(f"Totale PEB: {total_peb}")
+        print(f"Totale NEB: {total_neb}")
+    except Exception as e:
+        logger.warning(f"Errore durante il conteggio finale: {e}")
+
     logger.info(f"Ciclo completato! File NCER incrementale: {ncer_path}")
-
-
 
 if __name__ == "__main__":
     # Abilita logging solo se eseguito standalone

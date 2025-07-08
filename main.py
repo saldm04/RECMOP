@@ -3,8 +3,7 @@ from utils import get_pannelli, get_regione_from_provincia, safe_name, \
     normalize_dsm_input, \
     get_file_modification_date, configure_logging_globale, normalize_fabbricati_input_auto
 from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energetica, refresh_offerta_energetica
-from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica_zc_range, \
-    calcola_domanda_energetica_zc_suris_volris, calcola_domanda_energetica_zc_suris_volris_supdi
+from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica
 from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
 from model_builder.creazione_peb_neb import crea_peb_neb
 from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb
@@ -144,14 +143,7 @@ def main():
     # Calcolo domanda energetica
     print("Calcolo della domanda energetica in corso...")
     try:
-        if fabbricati_tipo == "zc_range":
-            calcola_domanda_energetica_zc_range(com_safe, prov_safe)
-        elif fabbricati_tipo == "zc_suris_volris":
-            calcola_domanda_energetica_zc_suris_volris(com_safe, prov_safe)
-        elif fabbricati_tipo == "zc_suris_volris_supdi":
-            calcola_domanda_energetica_zc_suris_volris_supdi(com_safe, prov_safe)
-        else:
-            raise ValueError(f"Tipologia fabbricati non riconosciuta: {fabbricati_tipo}")
+        calcola_domanda_energetica(com_safe, prov_safe, fabbricati_tipo)
         print("Domanda energetica calcolata con successo.")
     except Exception as e:
         print(f"Errore durante il calcolo della domanda energetica: {e}")
@@ -205,36 +197,64 @@ def main():
     while True:
         try:
             percentuale_autosuff = float(input(
-                "Inserisci la soglia di autosufficienza (percentuale tra 0 e 100):\n"
+                "Inserisci la soglia di autosufficienza (percentuale tra 1 e 100):\n"
                 "La soglia di autosufficienza indica la quota minima di deficit energetico\n"
                 "che deve essere coperta dal surplus per permettere l’aggregazione tra zone.\n"
                 "Ad esempio, inserendo 55, le aggregazioni saranno possibili solo se almeno il 55% del deficit può essere coperto dal surplus.\n"
                 "Valore desiderato: "
             ))
-            if 0 < percentuale_autosuff < 100:
+            if 0 < percentuale_autosuff <= 100:
                 break
             else:
-                print("Inserisci un valore compreso tra 0 e 100 (esclusi).")
+                print("Inserisci un valore compreso tra 1 e 100 (inclusi).")
         except ValueError:
             print("Input non valido. Inserisci un numero.")
 
-    # Chiedo all'utente se vuole specificare la distanza massima a ogni iterazione
+    # Chiedo all'utente se vuole impostare una distanza massima per il join
     while True:
-        risposta = input("Vuoi specificare una distanza massima per ogni iterazione? (SI/NO): ").strip().upper()
+        risposta = input(
+            "Vuoi specificare una distanza massima per l'associazione tra edifici? (SI/NO): ").strip().upper()
         if risposta == "SI":
-            distanza_iterativa = True
+            # Seconda domanda: fissa o diversa a ogni iterazione
+            while True:
+                risposta_tipo = input("Vuoi inserire una distanza massima fissa per tutte le iterazioni, "
+                                      "o vuoi specificarla ad ogni iterazione? (SI -> fissa / NO -> iterazione): ").strip().upper()
+                if risposta_tipo == "SI":
+                    # Chiedo la distanza fissa una volta
+                    while True:
+                        distanza_input = input("Inserisci la distanza massima (in metri): ").strip()
+                        try:
+                            distanza_max = float(distanza_input)
+                            if distanza_max > 0:
+                                distanza_iterativa = False
+                                break
+                            else:
+                                print("La distanza deve essere maggiore di zero.")
+                        except ValueError:
+                            print("Valore non valido. Inserisci un numero.")
+                    break
+                elif risposta_tipo == "NO":
+                    distanza_iterativa = True
+                    distanza_max = None
+                    break
+                else:
+                    print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
             break
         elif risposta == "NO":
             distanza_iterativa = False
+            distanza_max = None
             break
         else:
             print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
 
     # Chiedi provincia/comune come al solito, poi...
     print("Creazione PEB/NEB in corso...")
-    crea_peb_neb(prov_safe, com_safe)
+    num_peb, num_neb = crea_peb_neb(prov_safe, com_safe)
+    print(f"PEB creati: {num_peb}, NEB creati: {num_neb}")
     print("Interazione PEB/NEB in corso...")
-    ciclo_interazione_peb_neb(prov_safe, com_safe, percentuale_autosuff, distanza_iterativa=distanza_iterativa)
+    ciclo_interazione_peb_neb(prov_safe, com_safe, percentuale_autosuff,
+                              distanza_iterativa=distanza_iterativa,
+                              distanza_max=distanza_max)
     print("Analisi completata con successo. I risultati sono disponibili nella cartella "
           "'Data_Collection' e 'model_builder_shapefiles'.")
 

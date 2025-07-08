@@ -4,6 +4,9 @@ import pandas as pd
 import geopandas as gpd
 import logging
 
+from geopandas import GeoDataFrame
+
+from data_extraction.estrazione_dati_basi_territoriali import get_geom_basi_territoriali
 from data_extraction.join_data_normattiva_varcens_basiterr import get_join_data
 from data_extraction.siape import get_dati_siape
 from data_extraction.calcola_area_poligoni import calcola_area
@@ -12,81 +15,151 @@ from utils import safe_name, get_regione_from_provincia, configure_logging_if_ma
 
 logger = logging.getLogger(__name__)
 
-# === BASE DIR PER I PERCORSI RELATIVI AL PROGETTO ===
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.normpath(os.path.join(BASE_DIR, ".."))  # /data_extraction → progetto
-
 # =============================================================================
-# FUNZIONI DI CALCOLO
+# FUNZIONI DI UTILITY
 # =============================================================================
 
-def calcola_coefficiente_domanda_zc_range(df_join: pd.DataFrame, df_siape: pd.DataFrame, comune: str, provincia: str) -> float:
-    logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
-
-    # Applica la normalizzazione alle colonne
+def filtra_df_comune(df_join, comune, provincia):
     df_join['_COMUNE_NORM'] = df_join['COMUNE'].astype(str).apply(safe_name)
     df_join['_PROVINCIA_NORM'] = df_join['PROVINCIA'].astype(str).apply(safe_name)
-
-    # Filtro sui valori normalizzati
     df_comune = df_join[
         (df_join['_COMUNE_NORM'] == comune) &
         (df_join['_PROVINCIA_NORM'] == provincia)
-        ]
-
+    ]
     df_join.drop(columns=['_COMUNE_NORM', '_PROVINCIA_NORM'], inplace=True)
-
     if df_comune.empty:
         raise ValueError(f"Nessun dato trovato per il comune {comune} nella provincia {provincia}.")
+    return df_comune
 
-    def somma_colonne(*colonne):
-        return sum(
-            df_comune[col].fillna(0).astype(int).sum() for col in colonne
-        )
-
-    b1 = somma_colonne('E8', 'E9')
-    b2 = somma_colonne('E10', 'E11')
-    b3 = somma_colonne('E12', 'E13')
-    b4 = somma_colonne('E14', 'E15')
-    b5 = somma_colonne('E16')
-
-    totale_edifici = b1 + b2 + b3 + b4 + b5
-    if totale_edifici == 0:
-        raise ValueError(f"Totale edifici nullo per il comune {comune}.")
-
+def estrai_zona_climatica(df_comune, df_siape, comune):
     zc = df_comune['ZONA_CLIMATICA'].dropna().unique()
     if len(zc) != 1:
         raise ValueError(f"Zona climatica ambigua o mancante per {comune}. Valori trovati: {zc}")
     zc = zc[0]
-
     df_zc = df_siape[df_siape['zona_climatica'] == zc]
     if df_zc.empty:
         raise ValueError(f"Nessun dato SIAPE per la zona climatica {zc}")
+    return zc, df_zc
 
-    def get_coeff(df, periodo):
-        val = df[df['periodo'] == periodo]['EPgl_nren']
-        if val.empty or pd.isna(val.iloc[0]):
-            raise ValueError(f"Valore EPgl_nren mancante per periodo {periodo} in zona {zc}")
-        return float(val.iloc[0])
+def trova_range(valore, ranges):
+    for r in ranges:
+        if r.startswith('<'):
+            limite = float(r[1:])
+            if valore < limite:
+                return r
+        elif r.startswith('>'):
+            limite = float(r[1:])
+            if valore > limite:
+                return r
+        elif '-' in r:
+            min_, max_ = map(float, r.split('-'))
+            if min_ <= valore < max_:
+                return r
+    return None
 
-    epgl_nren_1 = get_coeff(df_zc, 'kE8E9')
-    epgl_nren_2 = get_coeff(df_zc, 'kE10E11')
-    epgl_nren_3 = get_coeff(df_zc, 'kE12E13')
-    epgl_nren_4 = get_coeff(df_zc, 'kE14E15')
-    epgl_nren_5 = get_coeff(df_zc, 'kE16')
+def join_fabbricati_sezione(provincia: str, gdf_fabbricati: gpd.GeoDataFrame) -> pd.DataFrame:
+    # Ottieni regione dalla provincia
+    regione = get_regione_from_provincia(safe_name(provincia))
+    # Carica le sezioni censuarie
+    gdf_sezioni = get_geom_basi_territoriali(regione)
 
-    coefficiente_domanda = (
-            (b1 * epgl_nren_1 + b2 * epgl_nren_2 + b3 * epgl_nren_3 +
-             b4 * epgl_nren_4 + b5 * epgl_nren_5) / totale_edifici
+    # Controlla CRS e portali uguali se necessario
+    if gdf_fabbricati.crs != gdf_sezioni.crs:
+        crs_orig = gdf_fabbricati.crs
+        gdf_fabbricati = gdf_fabbricati.to_crs(gdf_sezioni.crs)
+    else:
+        crs_orig = None
+
+    # Usa i centroidi dei fabbricati
+    gdf_centroidi = gdf_fabbricati.copy()
+    gdf_centroidi['geometry'] = gdf_centroidi.geometry.centroid
+
+    # Spatial join tra centroidi e sezioni
+    joined = gpd.sjoin(
+        gdf_centroidi[['FID', 'geometry']],
+        gdf_sezioni[['SEZ2011', 'geometry']],
+        how='inner',
+        predicate='within'
     )
+    # Il risultato contiene FID fabbricati e SEZ2011 sezione di appartenenza
+    result = joined[['FID', 'SEZ2011']].reset_index(drop=True)
 
-    return round(coefficiente_domanda, 2)
+    # Ripristina CRS originale se necessario
+    if crs_orig:
+        gdf_fabbricati = gdf_fabbricati.to_crs(crs_orig)
 
-def calcola_domanda_energetica_zc_range(comune: str, provincia: str) -> gpd.GeoDataFrame:
-    def coeff_wrapper(gdf, dfj, dfs, comune, provincia):
-        coeff = calcola_coefficiente_domanda_zc_range(dfj, dfs, comune, provincia)
-        gdf['coeff_dom'] = coeff
-        return gdf
-    return calcola_domanda_energetica(comune, provincia, "zc_range", coeff_wrapper)
+    return result
+
+# =============================================================================
+# FUNZIONI DI CALCOLO COEFFICIENTI (INVARIATE)
+# =============================================================================
+
+def calcola_coefficiente_domanda_zc_range(
+    gdf_fabbricati: gpd.GeoDataFrame,
+    df_join: pd.DataFrame,
+    df_siape: pd.DataFrame,
+    comune: str,
+    provincia: str
+) -> gpd.GeoDataFrame:
+    logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
+
+    # Estrai le sezioni per ogni fabbricato
+    df_fid_sez = join_fabbricati_sezione(provincia, gdf_fabbricati)  # FID, SEZ2011
+
+    # Filtra il join solo per il comune di interesse
+    df_comune = filtra_df_comune(df_join, comune, provincia)
+
+    # Estrai la zona climatica
+    zc, df_zc = estrai_zona_climatica(df_comune, df_siape, comune)
+
+    # Calcola coeff_dom_sez per ogni sezione del comune
+    sezioni = df_comune['SEZ2011'].unique()
+    lista = []
+    for sez in sezioni:
+        row = df_comune[df_comune['SEZ2011'] == sez]
+        if row.empty:
+            continue
+        # Somma i gruppi (prendi la prima riga, se per caso ce ne fossero più di una per sezione)
+        r = row.iloc[0]
+        b1 = r.get('E8', 0) + r.get('E9', 0)
+        b2 = r.get('E10', 0) + r.get('E11', 0)
+        b3 = r.get('E12', 0) + r.get('E13', 0)
+        b4 = r.get('E14', 0) + r.get('E15', 0)
+        b5 = r.get('E16', 0)
+        totale_edifici = b1 + b2 + b3 + b4 + b5
+        if totale_edifici == 0:
+            coeff_dom_sez = 0
+        else:
+            def get_coeff(df, periodo):
+                val = df[df['periodo'] == periodo]['EPgl_nren']
+                if val.empty or pd.isna(val.iloc[0]):
+                    raise ValueError(f"Valore EPgl_nren mancante per periodo {periodo} in zona {zc}")
+                return float(val.iloc[0])
+
+            epgl_nren_1 = get_coeff(df_zc, 'kE8E9')
+            epgl_nren_2 = get_coeff(df_zc, 'kE10E11')
+            epgl_nren_3 = get_coeff(df_zc, 'kE12E13')
+            epgl_nren_4 = get_coeff(df_zc, 'kE14E15')
+            epgl_nren_5 = get_coeff(df_zc, 'kE16')
+
+            coeff_dom_sez = (
+                (b1 * epgl_nren_1 + b2 * epgl_nren_2 + b3 * epgl_nren_3 +
+                 b4 * epgl_nren_4 + b5 * epgl_nren_5) / totale_edifici
+            )
+        lista.append({'SEZ2011': sez, 'coeff_dom_sez': round(coeff_dom_sez, 2)})
+
+    df_coeff_sez = pd.DataFrame(lista)
+
+    # Join tra FID, SEZ2011 e coeff_dom_sez
+    df_fid_sez = df_fid_sez.merge(df_coeff_sez, on='SEZ2011', how='left')
+
+    # Assegna coeff_dom a gdf_fabbricati in base al FID
+    gdf_fabbricati = gdf_fabbricati.copy()
+    gdf_fabbricati = gdf_fabbricati.merge(df_fid_sez[['FID', 'coeff_dom_sez']], on='FID', how='left')
+    gdf_fabbricati['coeff_dom'] = gdf_fabbricati['coeff_dom_sez'].fillna(0)
+    gdf_fabbricati.drop(columns=['coeff_dom_sez'], inplace=True)
+
+    return gdf_fabbricati
 
 def calcola_coefficiente_domanda_zc_suris_volris(
     gdf_fabbricati: gpd.GeoDataFrame,
@@ -97,53 +170,17 @@ def calcola_coefficiente_domanda_zc_suris_volris(
 ) -> gpd.GeoDataFrame:
     logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
 
-    # Normalizzazione
-    df_join['_COMUNE_NORM'] = df_join['COMUNE'].astype(str).apply(safe_name)
-    df_join['_PROVINCIA_NORM'] = df_join['PROVINCIA'].astype(str).apply(safe_name)
+    df_comune = filtra_df_comune(df_join, comune, provincia)
 
-    # Filtro sui valori normalizzati
-    df_comune = df_join[
-        (df_join['_COMUNE_NORM'] == comune) &
-        (df_join['_PROVINCIA_NORM'] == provincia)
-    ]
-    df_join.drop(columns=['_COMUNE_NORM', '_PROVINCIA_NORM'], inplace=True)
-
-    if df_comune.empty:
-        raise ValueError(f"Nessun dato trovato per il comune {comune} nella provincia {provincia}.")
-
-    zc = df_comune['ZONA_CLIMATICA'].dropna().unique()
-    if len(zc) != 1:
-        raise ValueError(f"Zona climatica ambigua o mancante per {comune}. Valori trovati: {zc}")
-    zc = zc[0]
-
-    df_zc = df_siape[df_siape['zona_climatica'] == zc]
-    if df_zc.empty:
-        raise ValueError(f"Nessun dato SIAPE per la zona climatica {zc}")
+    zc, df_zc = estrai_zona_climatica(df_comune, df_siape, comune)
 
     suris_ranges = list(df_zc['suris_range'].unique())
     volris_ranges = list(df_zc['volris_range'].unique())
 
-    def trova_range(valore, ranges):
-        for r in ranges:
-            if r.startswith('<'):
-                limite = float(r[1:])
-                if valore < limite:
-                    return r
-            elif r.startswith('>'):
-                limite = float(r[1:])
-                if valore > limite:
-                    return r
-            elif '-' in r:
-                min_, max_ = map(float, r.split('-'))
-                if min_ <= valore < max_:
-                    return r
-        return None
-
     def trova_epgl_robusto(sur_range, vol_range):
         # Cerca con entrambi
         riga = df_zc[
-            (df_zc['suris_range'] == sur_range) &
-            (df_zc['volris_range'] == vol_range)
+            (df_zc['suris_range'] == sur_range) & (df_zc['volris_range'] == vol_range)
         ]
         if not riga.empty:
             coeff = riga.iloc[0]['EPgl_nren']
@@ -188,11 +225,6 @@ def calcola_coefficiente_domanda_zc_suris_volris(
     gdf_fabbricati['coeff_dom'] = coeff_dom_list
     return gdf_fabbricati
 
-def calcola_domanda_energetica_zc_suris_volris(comune: str, provincia: str) -> gpd.GeoDataFrame:
-    return calcola_domanda_energetica(
-        comune, provincia, "zc_suris_volris", calcola_coefficiente_domanda_zc_suris_volris
-    )
-
 def calcola_coefficiente_domanda_zc_suris_volris_supdi(
     gdf_fabbricati: gpd.GeoDataFrame,
     df_join: pd.DataFrame,
@@ -202,54 +234,18 @@ def calcola_coefficiente_domanda_zc_suris_volris_supdi(
 ) -> gpd.GeoDataFrame:
     logger.info(f"Calcolo coefficiente domanda con supdi per {comune} ({provincia})...")
 
-    # Normalizzazione
-    df_join['_COMUNE_NORM'] = df_join['COMUNE'].astype(str).apply(safe_name)
-    df_join['_PROVINCIA_NORM'] = df_join['PROVINCIA'].astype(str).apply(safe_name)
+    df_comune = filtra_df_comune(df_join, comune, provincia)
 
-    df_comune = df_join[
-        (df_join['_COMUNE_NORM'] == comune) &
-        (df_join['_PROVINCIA_NORM'] == provincia)
-    ]
-    df_join.drop(columns=['_COMUNE_NORM', '_PROVINCIA_NORM'], inplace=True)
-
-    if df_comune.empty:
-        raise ValueError(f"Nessun dato trovato per il comune {comune} nella provincia {provincia}.")
-
-    zc = df_comune['ZONA_CLIMATICA'].dropna().unique()
-    if len(zc) != 1:
-        raise ValueError(f"Zona climatica ambigua o mancante per {comune}. Valori trovati: {zc}")
-    zc = zc[0]
-
-    df_zc = df_siape[df_siape['zona_climatica'] == zc]
-    if df_zc.empty:
-        raise ValueError(f"Nessun dato SIAPE per la zona climatica {zc}")
+    zc, df_zc = estrai_zona_climatica(df_comune, df_siape, comune)
 
     suris_ranges = list(df_zc['suris_range'].unique())
     volris_ranges = list(df_zc['volris_range'].unique())
     supdi_ranges = list(df_zc['supdi_range'].unique())
 
-    def trova_range(valore, ranges):
-        for r in ranges:
-            if r.startswith('<'):
-                limite = float(r[1:])
-                if valore < limite:
-                    return r
-            elif r.startswith('>'):
-                limite = float(r[1:])
-                if valore > limite:
-                    return r
-            elif '-' in r:
-                min_, max_ = map(float, r.split('-'))
-                if min_ <= valore < max_:
-                    return r
-        return None
-
     def trova_epgl_fallback(sur_range, vol_range, supdi_range):
         # 1. zona_climatica;suris_range;volris_range;supdi_range;
         riga = df_zc[
-            (df_zc['suris_range'] == sur_range) &
-            (df_zc['volris_range'] == vol_range) &
-            (df_zc['supdi_range'] == supdi_range)
+            (df_zc['suris_range'] == sur_range) & (df_zc['volris_range'] == vol_range) & (df_zc['supdi_range'] == supdi_range)
         ]
         if not riga.empty:
             coeff = riga.iloc[0]['EPgl_nren']
@@ -258,8 +254,7 @@ def calcola_coefficiente_domanda_zc_suris_volris_supdi(
 
         # 2. zona_climatica;suris_range;volris_range;
         riga = df_zc[
-            (df_zc['suris_range'] == sur_range) &
-            (df_zc['volris_range'] == vol_range)
+            (df_zc['suris_range'] == sur_range) & (df_zc['volris_range'] == vol_range)
         ]
         media2 = riga['EPgl_nren'].replace(0, pd.NA).dropna()
         if not media2.empty:
@@ -313,19 +308,54 @@ def calcola_coefficiente_domanda_zc_suris_volris_supdi(
     gdf_fabbricati['coeff_dom'] = coeff_dom_list
     return gdf_fabbricati
 
-def calcola_domanda_energetica_zc_suris_volris_supdi(comune: str, provincia: str) -> gpd.GeoDataFrame:
-    return calcola_domanda_energetica(
-        comune, provincia, "zc_suris_volris_supdi", calcola_coefficiente_domanda_zc_suris_volris_supdi, "_supdi"
-    )
+# =============================================================================
+# FUNZIONE DI CALCOLO UNIFICATA
+# =============================================================================
 
 def calcola_domanda_energetica(
     comune: str,
     provincia: str,
+    fabbricati_tipo: str
+) -> gpd.GeoDataFrame:
+    """
+    Calcola la domanda energetica in base alla tipologia fabbricati.
+    fabbricati_tipo: "zc_range", "zc_suris_volris", "zc_suris_volris_supdi"
+    """
+    logger.info(f"Inizio calcolo domanda energetica [{fabbricati_tipo}]...")
+
+    _COEFF_FUNCS = {
+        "zc_range": calcola_coefficiente_domanda_zc_range,
+        "zc_suris_volris": calcola_coefficiente_domanda_zc_suris_volris,
+        "zc_suris_volris_supdi": calcola_coefficiente_domanda_zc_suris_volris_supdi,
+    }
+    _SIAPE_KEYS = {
+        "zc_range": "zc_range",
+        "zc_suris_volris": "zc_suris_volris",
+        "zc_suris_volris_supdi": "zc_suris_volris_supdi",
+    }
+
+    if fabbricati_tipo not in _COEFF_FUNCS:
+        raise ValueError(f"Tipologia fabbricati non riconosciuta: {fabbricati_tipo}")
+
+    coeff_func = _COEFF_FUNCS[fabbricati_tipo]
+    siape_key = _SIAPE_KEYS[fabbricati_tipo]
+
+    return _calcola_domanda_energetica_impl(comune, provincia, siape_key, coeff_func)
+
+# =============================================================================
+# IMPLEMENTAZIONE PRIVATA, LOGICA INVARIATA
+# =============================================================================
+
+def _calcola_domanda_energetica_impl(
+    comune: str,
+    provincia: str,
     siape_key: str,
     coeff_func,
-    suffix: str = ""
-) -> gpd.GeoDataFrame:
-    logger.info(f"Inizio calcolo domanda energetica{suffix}...")
+) -> GeoDataFrame | None:
+    logger.info(f"Inizio calcolo domanda energetica...")
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.normpath(os.path.join(BASE_DIR, ".."))
 
     prov_safe = safe_name(provincia)
     comm_safe = safe_name(comune)
@@ -360,7 +390,33 @@ def calcola_domanda_energetica(
 
     # Calcolo/assegnazione coefficiente
     gdf_fabbricati = coeff_func(gdf_fabbricati, df_join, df_siape, comm_safe, prov_safe)
+
     gdf_fabbricati['domanda_en'] = gdf_fabbricati['area'] * gdf_fabbricati['coeff_dom']
+
+    if siape_key == "zc_range":
+        # Salva shapefile SOLO per edifici con domanda_en == 0
+        gdf_zero = gdf_fabbricati[gdf_fabbricati['domanda_en'] == 0].copy()
+        out_dir_zero = os.path.normpath(
+            os.path.join(PROJECT_ROOT, "Data_Collection", "shapefiles", subdir, dirname + "_zero"))
+        if os.path.exists(out_dir_zero):
+            shutil.rmtree(out_dir_zero)
+        os.makedirs(out_dir_zero)
+        out_shp_zero = os.path.join(out_dir_zero, f"{dirname}_zero.shp")
+        if not gdf_zero.empty:
+            gdf_zero.to_file(out_shp_zero, driver='ESRI Shapefile')
+            logger.info(f"Shapefile con domanda_en=0 salvato in {out_shp_zero} ({len(gdf_zero)} edifici)")
+        else:
+            logger.info("Nessun edificio con domanda_en=0 da salvare in shapefile separato.")
+
+        n_totale = len(gdf_fabbricati)
+        gdf_fabbricati = gdf_fabbricati[gdf_fabbricati['domanda_en'] > 0].copy()
+        n_eliminati = n_totale - len(gdf_fabbricati)
+        logger.info(f"Eliminati {n_eliminati} edifici su {n_totale} (domanda_en=0)")
+
+    # Aggiunta delta_UHI se presente
+    if 'delta_UHI' in gdf_fabbricati.columns:
+        logger.info("Colonna 'delta_UHI' trovata: aggiunta alla domanda energetica.")
+        gdf_fabbricati['domanda_en'] += gdf_fabbricati['delta_UHI']
 
     gdf_fabbricati = get_dati_catasto(gdf_fabbricati, prov_safe, comm_safe)
     gdf_fabbricati.to_file(out_shp, driver='ESRI Shapefile')
@@ -368,6 +424,11 @@ def calcola_domanda_energetica(
     logger.info(f"Shapefile con domanda energetica salvato in {out_shp}")
     return gdf_fabbricati
 
+# =============================================================================
+# MAIN
+# =============================================================================
+
 if __name__ == '__main__':
     configure_logging_if_main(__name__)
-    gdf = calcola_domanda_energetica_zc_suris_volris_supdi("giffoni valle piana", "salerno")
+    # Esempio: specifica qui il tipo desiderato
+    gdf = calcola_domanda_energetica("padula", "salerno", "zc_range")

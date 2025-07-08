@@ -146,6 +146,7 @@ def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) 
       - Solo FID + geometria: ritorna 'zc_range'
       - FID + geometria + sup_risc + vol_risc: ritorna 'zc_suris_volris'
       - FID + geometria + sup_risc + vol_risc + sup_disp: ritorna 'zc_suris_volris_supdi'
+      - Se presente la colonna opzionale delta_UHI, non la eliminare (vale per i tre modelli citati)
     - Rinomina tutti i file nella cartella con il prefisso 'fabbricati_{provincia}_{comune}'
     - In caso di errore solleva ValueError o RuntimeError.
     """
@@ -180,18 +181,23 @@ def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) 
     has_sup_risc = "sup_risc" in gdf.columns
     has_vol_risc = "vol_risc" in gdf.columns
     has_sup_disp = "sup_disp" in gdf.columns
+    has_delta_UHI = "delta_UHI" in gdf.columns  # opzionale
+
+    # Determina quali colonne tenere, considerando delta_UHI se presente
+    keep_cols = ["FID"]
+    if has_delta_UHI:
+        keep_cols.append("delta_UHI")
 
     if has_sup_risc and has_vol_risc and has_sup_disp:
-        keep_cols = ["FID", "sup_risc", "vol_risc", "sup_disp", gdf.geometry.name]
+        keep_cols += ["sup_risc", "vol_risc", "sup_disp", gdf.geometry.name]
         return_string = "zc_suris_volris_supdi"
     elif has_sup_risc and has_vol_risc:
-        keep_cols = ["FID", "sup_risc", "vol_risc", gdf.geometry.name]
+        keep_cols += ["sup_risc", "vol_risc", gdf.geometry.name]
         return_string = "zc_suris_volris"
     elif not has_sup_risc and not has_vol_risc and not has_sup_disp:
-        keep_cols = ["FID", gdf.geometry.name]
+        keep_cols += [gdf.geometry.name]
         return_string = "zc_range"
     else:
-        # Se c'è almeno una delle colonne ma la combinazione non è valida
         raise ValueError(
             "Colonne non coerenti: servono entrambi sup_risc e vol_risc (opzionale sup_disp), "
             "oppure nessuna delle tre per 'zc_range'.")
@@ -203,8 +209,11 @@ def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) 
     else:
         logger.info("Colonna 'FID' già presente.")
 
-    # Mantieni solo le colonne necessarie
-    gdf = gdf[[col for col in keep_cols if col in gdf.columns] + [gdf.geometry.name] if gdf.geometry.name not in keep_cols else keep_cols]
+    # Mantieni solo le colonne necessarie (senza duplicare geometry se già inclusa)
+    if gdf.geometry.name not in keep_cols:
+        keep_cols.append(gdf.geometry.name)
+    gdf = gdf[[col for col in keep_cols if col in gdf.columns]]
+
     logger.info(f"Shapefile normalizzato con colonne: {gdf.columns.tolist()}.")
 
     # Rimozione di tutti i file dalla cartella

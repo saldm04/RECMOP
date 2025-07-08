@@ -128,6 +128,8 @@ def crea_peb_neb(provincia: str, comune: str):
 
     logger.info("Generazione shapefile PEB e NEB completata.")
 
+    return len(gdf_peb), len(gdf_neb)
+
 # --- ESEMPIO USO ---
 if __name__ == "__main__":
     # Abilita logging solo se eseguito standalone

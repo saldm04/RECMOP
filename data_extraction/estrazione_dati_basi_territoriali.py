@@ -1,6 +1,7 @@
 import os
 import logging
 import pandas as pd
+import geopandas as gpd
 from dbfread import DBF
 from utils import safe_name, configure_logging_if_main
 
@@ -16,8 +17,6 @@ OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "c
 
 CAMPI_ESTRATTI = ['COD_REG', 'COD_ISTAT', 'PRO_COM', 'SEZ2011', 'SEZ', 'COD_LOC', 'TIPO_LOC']
 
-
-
 def trova_file_in_regione(regione: str, extension: str) -> str:
     """
     Trova un file con l'estensione specificata all'interno della cartella della regione.
@@ -30,10 +29,8 @@ def trova_file_in_regione(regione: str, extension: str) -> str:
         logger.warning(f"Trovati più file {extension} in {cartella}, verrà usato il primo: {files[0]}")
     return os.path.join(cartella, files[0])
 
-
 def trova_dbf_in_regione(regione: str) -> str:
     return trova_file_in_regione(regione, ".dbf")
-
 
 def estrai_dati_basi_territoriali(percorso_file: str) -> pd.DataFrame:
     table = DBF(percorso_file, load=True, ignorecase=True, recfactory=dict)
@@ -46,7 +43,6 @@ def estrai_dati_basi_territoriali(percorso_file: str) -> pd.DataFrame:
             logger.warning(f"Colonna non convertita a intero: {col}")
     return df
 
-
 def salva_dati_basi_territoriali(df: pd.DataFrame, cartella_output: str, nome_file: str,
                                  sep: str = ';', encoding: str = 'utf-8-sig') -> None:
     os.makedirs(cartella_output, exist_ok=True)
@@ -57,7 +53,6 @@ def salva_dati_basi_territoriali(df: pd.DataFrame, cartella_output: str, nome_fi
     df.to_csv(output_path, index=False, sep=sep, encoding=encoding)
     logger.info(f"Dati salvati in: {output_path}")
 
-
 def run_estrazione_basi_territoriali(regione: str) -> pd.DataFrame:
     regione_safe = safe_name(regione)
     input_path = trova_dbf_in_regione(regione_safe)
@@ -65,7 +60,6 @@ def run_estrazione_basi_territoriali(regione: str) -> pd.DataFrame:
     df = estrai_dati_basi_territoriali(input_path)
     salva_dati_basi_territoriali(df, OUTPUT_DIR, nome_file)
     return df
-
 
 def get_dati_basi_territoriali(regione: str) -> pd.DataFrame:
     regione_safe = safe_name(regione)
@@ -78,10 +72,18 @@ def get_dati_basi_territoriali(regione: str) -> pd.DataFrame:
     logger.info(f"Dati caricati da: {path_csv}")
     return df
 
+def get_geom_basi_territoriali(regione: str) -> gpd.GeoDataFrame:
+    regione_safe = safe_name(regione)
+    percorso_shp = trova_shp_in_regione(regione_safe)
+    gdf = gpd.read_file(percorso_shp)
+    logger.info(f"Shapefile caricato da: {percorso_shp}")
+    # Filtra solo le colonne 'SEZ2011' e 'geometry'
+    colonne_necessarie = ['SEZ2011', 'geometry']
+    gdf = gdf[[col for col in colonne_necessarie if col in gdf.columns]]
+    return gdf
 
 def trova_shp_in_regione(regione: str) -> str:
     return trova_file_in_regione(regione, ".shp")
-
 
 if __name__ == '__main__':
     # Abilita logging solo se eseguito standalone
