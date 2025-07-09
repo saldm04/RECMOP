@@ -76,13 +76,13 @@ def join_fabbricati_sezione(provincia: str, gdf_fabbricati: gpd.GeoDataFrame) ->
 
     # Spatial join tra centroidi e sezioni
     joined = gpd.sjoin(
-        gdf_centroidi[['FID', 'geometry']],
+        gdf_centroidi[['ID_FAB', 'geometry']],
         gdf_sezioni[['SEZ2011', 'geometry']],
         how='inner',
         predicate='within'
     )
-    # Il risultato contiene FID fabbricati e SEZ2011 sezione di appartenenza
-    result = joined[['FID', 'SEZ2011']].reset_index(drop=True)
+    # Il risultato contiene ID_FAB fabbricati e SEZ2011 sezione di appartenenza
+    result = joined[['ID_FAB', 'SEZ2011']].reset_index(drop=True)
 
     # Ripristina CRS originale se necessario
     if crs_orig:
@@ -104,7 +104,7 @@ def calcola_coefficiente_domanda_zc_range(
     logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
 
     # Estrai le sezioni per ogni fabbricato
-    df_fid_sez = join_fabbricati_sezione(provincia, gdf_fabbricati)  # FID, SEZ2011
+    df_ID_FAB_sez = join_fabbricati_sezione(provincia, gdf_fabbricati)  # ID_FAB, SEZ2011
 
     # Filtra il join solo per il comune di interesse
     df_comune = filtra_df_comune(df_join, comune, provincia)
@@ -150,12 +150,12 @@ def calcola_coefficiente_domanda_zc_range(
 
     df_coeff_sez = pd.DataFrame(lista)
 
-    # Join tra FID, SEZ2011 e coeff_dom_sez
-    df_fid_sez = df_fid_sez.merge(df_coeff_sez, on='SEZ2011', how='left')
+    # Join tra ID_FAB, SEZ2011 e coeff_dom_sez
+    df_ID_FAB_sez = df_ID_FAB_sez.merge(df_coeff_sez, on='SEZ2011', how='left')
 
-    # Assegna coeff_dom a gdf_fabbricati in base al FID
+    # Assegna coeff_dom a gdf_fabbricati in base al ID_FAB
     gdf_fabbricati = gdf_fabbricati.copy()
-    gdf_fabbricati = gdf_fabbricati.merge(df_fid_sez[['FID', 'coeff_dom_sez']], on='FID', how='left')
+    gdf_fabbricati = gdf_fabbricati.merge(df_ID_FAB_sez[['ID_FAB', 'coeff_dom_sez']], on='ID_FAB', how='left')
     gdf_fabbricati['coeff_dom'] = gdf_fabbricati['coeff_dom_sez'].fillna(0)
     gdf_fabbricati.drop(columns=['coeff_dom_sez'], inplace=True)
 
@@ -216,7 +216,7 @@ def calcola_coefficiente_domanda_zc_suris_volris(
         range_sur = trova_range(sup, suris_ranges)
         range_vol = trova_range(vol, volris_ranges)
         if range_sur is None or range_vol is None:
-            logger.warning(f"Range non trovato per fabbricato FID={row.get('FID', idx)}: sup_risc={sup}, vol_risc={vol}")
+            logger.warning(f"Range non trovato per fabbricato ID_FAB={row.get('ID_FAB', idx)}: sup_risc={sup}, vol_risc={vol}")
             coeff_dom_list.append(None)
             continue
         coeff = trova_epgl_robusto(range_sur, range_vol)
@@ -298,7 +298,7 @@ def calcola_coefficiente_domanda_zc_suris_volris_supdi(
         range_supdi = trova_range(supdi, supdi_ranges)
         if range_sur is None or range_vol is None or range_supdi is None:
             logger.warning(
-                f"Range non trovato per fabbricato FID={row.get('FID', idx)}: "
+                f"Range non trovato per fabbricato ID_FAB={row.get('ID_FAB', idx)}: "
                 f"sup_risc={sup}, vol_risc={vol}, sup_disp={supdi}")
             coeff_dom_list.append(None)
             continue
@@ -386,7 +386,7 @@ def _calcola_domanda_energetica_impl(
     if os.path.exists(out_dir):
         shutil.rmtree(out_dir)
     os.makedirs(out_dir)
-    out_shp = os.path.join(out_dir, f"{dirname}.shp")
+    out_gpkg = os.path.join(out_dir, f"{dirname}.gpkg")
 
     # Calcolo/assegnazione coefficiente
     gdf_fabbricati = coeff_func(gdf_fabbricati, df_join, df_siape, comm_safe, prov_safe)
@@ -394,19 +394,19 @@ def _calcola_domanda_energetica_impl(
     gdf_fabbricati['domanda_en'] = gdf_fabbricati['area'] * gdf_fabbricati['coeff_dom']
 
     if siape_key == "zc_range":
-        # Salva shapefile SOLO per edifici con domanda_en == 0
+        # Salva gpkg SOLO per edifici con domanda_en == 0
         gdf_zero = gdf_fabbricati[gdf_fabbricati['domanda_en'] == 0].copy()
         out_dir_zero = os.path.normpath(
             os.path.join(PROJECT_ROOT, "Data_Collection", "shapefiles", subdir, dirname + "_zero"))
         if os.path.exists(out_dir_zero):
             shutil.rmtree(out_dir_zero)
         os.makedirs(out_dir_zero)
-        out_shp_zero = os.path.join(out_dir_zero, f"{dirname}_zero.shp")
+        out_gpkg_zero = os.path.join(out_dir_zero, f"{dirname}_zero.gpkg")
         if not gdf_zero.empty:
-            gdf_zero.to_file(out_shp_zero, driver='ESRI Shapefile')
-            logger.info(f"Shapefile con domanda_en=0 salvato in {out_shp_zero} ({len(gdf_zero)} edifici)")
+            gdf_zero.to_file(out_gpkg_zero, driver='GPKG')
+            logger.info(f"gpkg con domanda_en=0 salvato in {out_gpkg_zero} ({len(gdf_zero)} edifici)")
         else:
-            logger.info("Nessun edificio con domanda_en=0 da salvare in shapefile separato.")
+            logger.info("Nessun edificio con domanda_en=0 da salvare in gpkg separato.")
 
         n_totale = len(gdf_fabbricati)
         gdf_fabbricati = gdf_fabbricati[gdf_fabbricati['domanda_en'] > 0].copy()
@@ -419,9 +419,10 @@ def _calcola_domanda_energetica_impl(
         gdf_fabbricati['domanda_en'] += gdf_fabbricati['delta_UHI']
 
     gdf_fabbricati = get_dati_catasto(gdf_fabbricati, prov_safe, comm_safe)
-    gdf_fabbricati.to_file(out_shp, driver='ESRI Shapefile')
+    gdf_fabbricati.to_file(out_gpkg, driver='GPKG')
 
-    logger.info(f"Shapefile con domanda energetica salvato in {out_shp}")
+    logger.info(f"gpkg con domanda energetica salvato in {out_gpkg}")
+
     return gdf_fabbricati
 
 # =============================================================================

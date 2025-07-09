@@ -1,7 +1,7 @@
 from tabulate import tabulate
 from utils import get_pannelli, get_regione_from_provincia, safe_name, \
     normalize_dsm_input, \
-    get_file_modification_date, configure_logging_globale, normalize_fabbricati_input_auto
+    get_file_modification_date, configure_logging_globale, normalize_fabbricati_input_auto, normalize_vincoli_input
 from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energetica, refresh_offerta_energetica
 from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica
 from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
@@ -75,6 +75,9 @@ def main():
         "- Se contiene anche 'sup_risc' e 'vol_risc' → modello esteso: Zona climatica, Superficie utile riscaldata e volume riscaldato\n"
         "- Se contiene anche 'sup_disp' oltre a 'sup_risc' e 'vol_risc' → modello completo: Zona climatica, Superficie utile riscaldata, volume riscaldato e superficie disperdente\n"
         "\n"
+        "In aggiunta, se lo shapefile contiene la colonna opzionale 'delta_UHI', il suo valore (espresso in kWh/anno) verrà sommato alla "
+        "domanda energetica finale, per tenere conto dell'incremento dovuto all'effetto isola di calore urbana."
+        "\n"
         "L'analisi verrà effettuata sull'intersezione tra i fabbricati e il DSM forniti.\n"
     )
 
@@ -87,7 +90,9 @@ def main():
     try:
         # Normalizzazione e controllo fabbricati
         fabbricati_tipo = normalize_fabbricati_input_auto(os.path.abspath("FABBRICATI"), prov_safe, com_safe)
-        normalize_dsm_input(os.path.abspath("input_dsm"), prov_safe, com_safe)
+        normalize_dsm_input(os.path.abspath("input_dsm"), os.path.abspath(os.path.join("offerta", "grass_gis", "irradiance_tif")),
+                            prov_safe, com_safe)
+        exist_vincoli = normalize_vincoli_input(os.path.abspath("VINCOLI"), prov_safe, com_safe)
     except Exception as e:
         print(f"Errore nella normalizzazione dei dati: {e}")
         print("Assicurati che i nomi delle directory e dei file siano corretti.")
@@ -149,6 +154,18 @@ def main():
         print(f"Errore durante il calcolo della domanda energetica: {e}")
         sys.exit(1)
 
+    if exist_vincoli:
+        while True:
+            risposta_vincoli = input(
+                "Vuoi considerare i vincoli nel calcolo dell'offerta energetica? (SI/NO): ").strip().upper()
+            if risposta_vincoli in ("SI", "NO"):
+                use_vincoli = risposta_vincoli == "SI"
+                break
+            else:
+                print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
+    else:
+        use_vincoli = False
+
     # Selezione pannello
     pannelli_df = get_pannelli()
     # Mostra i pannelli disponibili
@@ -170,26 +187,41 @@ def main():
     print("\nPannello selezionato:")
     print(tabulate(pannello_selezionato.to_frame().T, headers="keys", tablefmt="grid", showindex=False))
 
-    # Controllo esistenza tif irradiance
-    tif_path = os.path.join("offerta", "grass_gis", "irradiance_tif", f"irradianza_annua_{prov_safe}_{com_safe}_kwh.tif")
-    if os.path.exists(tif_path):
+    # Costruzione path
+    tif_path = os.path.join("offerta", "grass_gis", "irradiance_tif",
+                            f"irradianza_annua_{prov_safe}_{com_safe}_kwh.tif")
+    dsm_path = os.path.join("input_dsm", f"DSM_{prov_safe}_{com_safe}.tif")
+
+    esiste_tif = os.path.exists(tif_path)
+    esiste_dsm = os.path.exists(dsm_path)
+
+    if esiste_tif and esiste_dsm:
         ultima_mod_tif = get_file_modification_date(tif_path)
         print(f"Irradianza annua - Ultimo aggiornamento: {ultima_mod_tif}")
         while True:
             risposta_ricalcolo = input("Vuoi ricalcolare il tif dell'irradianza annua? (SI/NO): ").strip().upper()
             if risposta_ricalcolo == "SI":
                 print("Calcolo dell'offerta energetica in corso...")
-                refresh_offerta_energetica(prov_safe, com_safe, indice_pannello)
+                refresh_offerta_energetica(prov_safe, com_safe, indice_pannello, use_vincoli=use_vincoli)
                 break
             elif risposta_ricalcolo == "NO":
                 print("Calcolo dell'offerta energetica in corso...")
-                calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
+                calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello, use_vincoli=use_vincoli)
                 break
             else:
                 print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
-    else:
+    elif esiste_dsm and not esiste_tif:
         print("Calcolo dell'offerta energetica in corso...")
-        calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello)
+        calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello, use_vincoli=use_vincoli)
+    elif esiste_tif and not esiste_dsm:
+        ultima_mod_tif = get_file_modification_date(tif_path)
+        print(f"DSM assente. Utilizzo il tif di irradianza già presente (Ultimo aggiornamento: {ultima_mod_tif}).")
+        print("Calcolo dell'offerta energetica in corso...")
+        calcolo_offerta_energetica(prov_safe, com_safe, indice_pannello, use_vincoli=use_vincoli)
+    else:
+        print(
+            f"Non sono stati trovati né il DSM ({dsm_path}) né il tif di irradianza ({tif_path}) per {prov_safe} - {com_safe}. Impossibile continuare.")
+        sys.exit(1)
 
     print("Offerta energetica calcolata con successo.")
 

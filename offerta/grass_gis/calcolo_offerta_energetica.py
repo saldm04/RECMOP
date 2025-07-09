@@ -28,6 +28,7 @@ GRASS_MAPSET = os.getenv('GRASS_MAPSET', 'PERMANENT')
 
 # Directory di input/output fissi
 FABBRICATI_BASE = os.path.join(BASE_DIR, 'FABBRICATI')
+VINCOLI_BASE = os.path.join(BASE_DIR, 'VINCOLI')
 DSM_BASE = os.path.join(BASE_DIR, 'input_dsm')
 OUTPUT_DIR = os.path.join(BASE_DIR, 'offerta', 'grass_gis', 'irradiance_tif')
 SHAPE_OUT_DIR = os.path.join(BASE_DIR, 'Data_Collection', 'shapefiles')
@@ -227,54 +228,106 @@ def solar_radiation_pipeline(provincia: str, comune: str, location_tmp: str) -> 
 
     return output_tif
 
-
-def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int) -> gpd.GeoDataFrame:
-    """Calcola l'offerta energetica per ogni fabbricato e salva shapefile con struttura cartelle coerente."""
+def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int, use_vincoli: bool = True) -> gpd.GeoDataFrame:
+    """Calcola l'offerta energetica per ogni fabbricato escludendo quelli all'interno dei vincoli. Salva gpkg finale."""
     prov_safe = safe_name(provincia)
     com_safe = safe_name(comune)
     raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov_safe}_{com_safe}_kwh.tif')
     shapefolder = os.path.join(FABBRICATI_BASE, f'fabbricati_{prov_safe}_{com_safe}')
+    vincoli_folder = os.path.join(VINCOLI_BASE, f'vincoli_{prov_safe}_{com_safe}')
 
     logger.info(f'Calcolo offerta energetica per {provincia}/{comune}')
+
+    # --- Lettura fabbricati
     shp_list = [f for f in os.listdir(shapefolder) if f.lower().endswith('.shp')]
     if not shp_list:
         raise FileNotFoundError(f'Nessuno shapefile in {shapefolder}')
     shp = os.path.join(shapefolder, shp_list[0])
-
     gdf = gpd.read_file(shp)
-    gdf = reproject_if_needed(rasterio.open(raster).crs, gdf)
-    stats = zonal_stats(gdf, raster, stats=['mean'])
-    gdf['irr_kwh_m2'] = [s['mean'] for s in stats]
-    gdf = gdf[gdf['irr_kwh_m2'] > 0]
-    gdf = calcola_area(gdf, nome_colonna='area')
 
+    # --- Lettura vincoli (tollerante)
+    mask_in_vincolo = pd.Series([False] * len(gdf), index=gdf.index)
+    gdf_offerta = gdf.copy()
+    if use_vincoli:
+        vincoli_esistono = os.path.isdir(vincoli_folder)
+        vincoli_list = []
+        if vincoli_esistono:
+            vincoli_list = [f for f in os.listdir(vincoli_folder) if f.lower().endswith('.shp')]
+
+        if vincoli_list:
+            vincoli_shp = os.path.join(vincoli_folder, vincoli_list[0])
+            gdf_vincoli = gpd.read_file(vincoli_shp)
+            # Allinea CRS tra fabbricati e vincoli (se necessario)
+            if gdf.crs != gdf_vincoli.crs:
+                logger.info("Allineamento CRS vincoli a quello dei fabbricati")
+                gdf_vincoli = gdf_vincoli.to_crs(gdf.crs)
+            # Filtra i fabbricati FUORI dai vincoli usando i centroidi
+            centroids = gdf.geometry.centroid
+            vincoli_union = gdf_vincoli.unary_union
+            mask_in_vincolo = centroids.within(vincoli_union)
+            gdf_offerta = gdf[~mask_in_vincolo].copy()
+        else:
+            logger.info("Vincoli non trovati o non richiesti: nessun edificio viene escluso")
+    else:
+        logger.info("Vincoli ignorati su richiesta utente.")
+
+    # --- Riproiezione per zonal stats (solo se CRS raster diverso)
+    raster_crs = rasterio.open(raster).crs
+    if gdf_offerta.crs != raster_crs:
+        gdf_offerta = reproject_if_needed(raster_crs, gdf_offerta)
+
+    # --- Zonal stats SOLO su edifici FUORI dai vincoli
+    stats = zonal_stats(gdf_offerta, raster, stats=['mean'], nodata=0)
+    gdf_offerta['irr_kwh_m2'] = [s['mean'] for s in stats]
+    gdf_offerta = gdf_offerta[gdf_offerta['irr_kwh_m2'] > 0]
+    gdf_offerta = calcola_area(gdf_offerta, nome_colonna='area')
+
+    # --- Carica i dati del pannello
     panel_df = pd.read_csv(PANEL_DATA_PATH, delimiter=',', decimal=',', na_values=['n.a.', 'N.A.', 'na', 'NA', '-', ''])
     for col in ['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione']:
         panel_df[col] = pd.to_numeric(panel_df[col], errors='coerce')
     panel_df.dropna(subset=['Potenza (Wp)', 'Efficienza (%)', 'Prezzo', 'Dimensione'], inplace=True)
     specs = panel_df.iloc[idx_panel]
 
-    gdf['Ptnz_Wp'] = specs['Potenza (Wp)']
-    gdf['Eff_pct'] = specs['Efficienza (%)']
-    gdf['Dim_m2'] = specs['Dimensione']
-    gdf['Prz_uni'] = specs['Prezzo']
-    gdf['num_PV'] = (gdf['area'] / gdf['Dim_m2']).astype(int).clip(lower=0)
-    gdf['Prz_tot'] = gdf['num_PV'] * gdf['Prz_uni']
-    gdf['Ptnz_tot'] = gdf['Ptnz_Wp'] * gdf['num_PV']
-    gdf['Prod_kWh_y'] = gdf['irr_kwh_m2'] * (1 - gdf['Eff_pct'] / 100) * gdf['Ptnz_Wp'] * gdf['num_PV'] / 1000
+    # --- Calcolo offerta energetica SOLO per fabbricati fuori vincoli
+    gdf_offerta['Ptnz_Wp'] = specs['Potenza (Wp)']
+    gdf_offerta['Eff_pct'] = specs['Efficienza (%)']
+    gdf_offerta['Dim_m2'] = specs['Dimensione']
+    gdf_offerta['Prz_uni'] = specs['Prezzo']
+    gdf_offerta['num_PV'] = (gdf_offerta['area'] / gdf_offerta['Dim_m2']).astype(int).clip(lower=0)
+    gdf_offerta['Prz_tot'] = gdf_offerta['num_PV'] * gdf_offerta['Prz_uni']
+    gdf_offerta['Ptnz_tot'] = gdf_offerta['Ptnz_Wp'] * gdf_offerta['num_PV']
+    gdf_offerta['Prod_kWh_y'] = gdf_offerta['irr_kwh_m2'] * (1 - gdf_offerta['Eff_pct'] / 100) * gdf_offerta['Ptnz_Wp'] * gdf_offerta['num_PV'] / 1000
 
+    # --- Costruzione gdf finale: unisci i fabbricati filtrati e quelli dentro i vincoli con valori a 0
+    float_cols = ['irr_kwh_m2', 'area', 'Ptnz_Wp', 'Eff_pct', 'Dim_m2', 'Prz_uni', 'Prz_tot', 'Ptnz_tot', 'Prod_kWh_y']
+    int_cols = ['num_PV']
+
+    # Inizializza le colonne col tipo corretto
+    for col in float_cols:
+        if col not in gdf.columns:
+            gdf[col] = 0.0
+    for col in int_cols:
+        if col not in gdf.columns:
+            gdf[col] = 0
+
+    # Aggiorna i valori SOLO per quelli FUORI dai vincoli
+    gdf.loc[gdf_offerta.index, float_cols] = gdf_offerta[float_cols].astype(float)
+    gdf.loc[gdf_offerta.index, int_cols] = gdf_offerta[int_cols].astype(int)
+
+    # --- Salva risultato
     subdir = f'{prov_safe}_{com_safe}'
     dirname = f'offerta_energetica_{prov_safe}_{com_safe}'
     outdir = os.path.join(SHAPE_OUT_DIR, subdir, dirname)
     if os.path.exists(outdir):
         shutil.rmtree(outdir)
     os.makedirs(outdir)
-    outshp = os.path.join(outdir, f'{dirname}.shp')
-    gdf.to_file(outshp)
-    logger.info(f'Shapefile offerta energetica salvato: {outshp}')
+    outgpkg = os.path.join(outdir, f'{dirname}.gpkg')
+    gdf.to_file(outgpkg, driver='GPKG')
+    logger.info(f'gpkg offerta energetica salvato: {outgpkg}')
     return gdf
 
-def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeline_func=None):
+def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeline_func=None, use_vincoli: bool = True):
     """
     Calcola l'offerta energetica per ogni fabbricato, rilanciando la pipeline se il risultato è vuoto.
     pipeline_func: funzione da chiamare per rigenerare i dati se necessario (es: solar_radiation_pipeline).
@@ -292,7 +345,7 @@ def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeli
         if not os.path.exists(raster) or raster_is_empty(raster):
             logger.warning(f"Il raster prodotto è vuoto (tentativo {i + 1}/{tentativi}).")
             continue  # rilancia la pipeline o tenta di nuovo
-        gdf = calculate_building_irradiance(provincia, comune, idx_panel)
+        gdf = calculate_building_irradiance(provincia, comune, idx_panel, use_vincoli=use_vincoli)
         # Secondo controllo: GeoDataFrame vuoto?
         if not gdf.empty:
             return gdf
@@ -304,38 +357,46 @@ def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeli
         f"Offerta energetica vuota anche dopo {tentativi} tentativi! Verificare input e pipeline per {provincia}/{comune}."
     )
 
-def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int):
+def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int, use_vincoli: bool = True):
     """
     Orchestratore: se serve aggiorna raster con location temporanea, poi esegue calcolo offerta.
+    Gestisce anche il caso in cui manchi il raster di irradianza, senza tentare rigenerazione se manca il DSM.
     """
     prov = safe_name(provincia)
     com = safe_name(comune)
     raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov}_{com}_kwh.tif')
     dem = os.path.join(DSM_BASE, f'DSM_{prov}_{com}.tif')
-    epsg = get_epsg(dem)
 
-    # Valuta se serve rigenerare il raster
-    raster_da_rifare = (not os.path.isfile(raster)) or raster_is_empty(raster)
+    # Prima controlla se esiste il DSM
+    dem_exists = os.path.isfile(dem)
+    raster_exists = os.path.isfile(raster)
+    raster_empty = raster_is_empty(raster) if raster_exists else True
+
+    epsg = get_epsg(dem) if dem_exists else None
     location_tmp = None
 
     try:
-        if raster_da_rifare:
-            location_tmp = generate_temp_location(epsg, comune, provincia)
-            logger.info(f'Creo location temporanea: {location_tmp}')
-            solar_radiation_pipeline(provincia, comune, location_tmp)  # passa la location come parametro!
-        gdf = safe_building_irradiance(provincia, comune, idx_panel, pipeline_func=lambda p, c: solar_radiation_pipeline(p, c, location_tmp))
-        # Successo: elimina subito la location temporanea
+        # Caso 1: DSM esiste → se raster mancante/vuoto, rigeneralo
+        if dem_exists:
+            if (not raster_exists) or raster_empty:
+                location_tmp = generate_temp_location(epsg, comune, provincia)
+                logger.info(f'Creo location temporanea: {location_tmp}')
+                solar_radiation_pipeline(provincia, comune, location_tmp)
+        # Caso 2: DSM non esiste → NON tentare nessuna rigenerazione, usa solo quello che c'è
+        gdf = safe_building_irradiance(provincia, comune, idx_panel,
+                                       pipeline_func=lambda p, c: solar_radiation_pipeline(p, c, location_tmp),
+                                       use_vincoli=use_vincoli)
+        # Successo: elimina la location temporanea se creata
         if location_tmp:
             remove_grass_location(GRASS_GISDB, location_tmp)
         return gdf
     except Exception as e:
-        # Se fallisce, elimina comunque la location temporanea dopo il secondo tentativo
+        # Pulisci la location temporanea anche in caso di errore
         if location_tmp:
             remove_grass_location(GRASS_GISDB, location_tmp)
         raise
 
-
-def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int):
+def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int, use_vincoli: bool = True):
     prov = safe_name(provincia)
     com = safe_name(comune)
     dem = os.path.join(DSM_BASE, f'DSM_{prov}_{com}.tif')
@@ -344,7 +405,7 @@ def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int):
     try:
         logger.info(f"Refresh completo dell’offerta energetica per {provincia}/{comune} (location: {location_tmp})")
         solar_radiation_pipeline(provincia, comune, location_tmp)
-        gdf = safe_building_irradiance(provincia, comune, idx_panel, pipeline_func=lambda p, c: solar_radiation_pipeline(p, c, location_tmp))
+        gdf = safe_building_irradiance(provincia, comune, idx_panel, pipeline_func=lambda p, c: solar_radiation_pipeline(p, c, location_tmp), use_vincoli=use_vincoli)
         remove_grass_location(GRASS_GISDB, location_tmp)
         return gdf
     except Exception as e:

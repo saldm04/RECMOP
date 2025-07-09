@@ -112,8 +112,8 @@ def query_catasto_point(x: float, y: float) -> dict:
             'ADMINISTRATIVEUNIT': feat.find('.//CP:ADMINISTRATIVEUNIT', namespaces).text,
             'NATIONALCADASTRALREFERENCE': feat.find('.//CP:NATIONALCADASTRALREFERENCE', namespaces).text
         }
-        # Log dei dati che verranno salvati nel shapefile
-        logger.info(f"Dati salvati shapefile ({x}, {y}): FOGLIO={result['INSPIREID_LOCALID'].split('_')[1].split('.')[0] if '_' in result['INSPIREID_LOCALID'] and '.' in result['INSPIREID_LOCALID'] else None}, "
+        # Log dei dati che verranno salvati nel gpkg
+        logger.info(f"Dati salvati gpkg ({x}, {y}): FOGLIO={result['INSPIREID_LOCALID'].split('_')[1].split('.')[0] if '_' in result['INSPIREID_LOCALID'] and '.' in result['INSPIREID_LOCALID'] else None}, "
                     f"PARTICELLA={result['LABEL']}, COD_COMUNE={result['ADMINISTRATIVEUNIT']}")
         return result
     except ET.ParseError as e:
@@ -128,30 +128,30 @@ OUTPUT_BASE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection
 
 def get_output_paths(provincia: str, comune: str) -> tuple:
     """
-    Restituisce la directory e il percorso completo dello shapefile per provincia e comune (in minuscolo, senza spazi).
-    [assoluto]/Data_Collection/shapefiles/[provincia]_[comune]/dati_catasto_[provincia]_[comune]/dati_catasto_[provincia]_[comune].shp
+    Restituisce la directory e il percorso completo dello gpkg per provincia e comune (in minuscolo, senza spazi).
+    [assoluto]/Data_Collection/shapefiles/[provincia]_[comune]/dati_catasto_[provincia]_[comune]/dati_catasto_[provincia]_[comune].gpkg
     """
     prov_safe = safe_name(provincia)
     comune_safe = safe_name(comune)
     subdir = f"{prov_safe}_{comune_safe}"
     dir_name = f"dati_catasto_{prov_safe}_{comune_safe}"
     dir_path = os.path.join(OUTPUT_BASE_DIR, subdir, dir_name)
-    shp_name = f"{dir_name}.shp"
-    shp_path = os.path.join(dir_path, shp_name)
-    return dir_path, shp_path
+    gpkg_name = f"{dir_name}.gpkg"
+    gpkg_path = os.path.join(dir_path, gpkg_name)
+    return dir_path, gpkg_path
 
 
 # ========================
-# SALVA SHAPEFILE
+# SALVA gpkg
 # ========================
 def salva_shapefile_catastale(gdf: gpd.GeoDataFrame, provincia: str, comune: str):
-    """Salva il GeoDataFrame in shapefile nella directory dedicata."""
-    dir_path, shp_path = get_output_paths(provincia, comune)
+    """Salva il GeoDataFrame in geopackage nella directory dedicata."""
+    dir_path, gpkg_path = get_output_paths(provincia, comune)
     if os.path.exists(dir_path):
         shutil.rmtree(dir_path)
     os.makedirs(dir_path)
-    logger.info(f"Salvataggio shapefile: {shp_path}")
-    gdf.to_file(shp_path, driver='ESRI Shapefile')
+    logger.info(f"Salvataggio gpkg: {gpkg_path}")
+    gdf.to_file(gpkg_path, driver='GPKG')
 
 # ========================
 # ELABORAZIONE GEOdataframe
@@ -207,11 +207,11 @@ def get_dati_catasto(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune: str
     Mantiene invariato il CRS originale dei poligoni.
     """
     crs_originale = gdf_poligoni.crs
-    dir_path, shp_path = get_output_paths(provincia, comune)
+    dir_path, gpkg_path = get_output_paths(provincia, comune)
 
-    if os.path.exists(shp_path):
-        logger.info(f"Shapefile catastale già esistente: {shp_path}. Caricamento dati.")
-        gdf_catasto = gpd.read_file(shp_path).to_crs(crs_originale)
+    if os.path.exists(gpkg_path):
+        logger.info(f"gpkg catastale già esistente: {gpkg_path}. Caricamento dati.")
+        gdf_catasto = gpd.read_file(gpkg_path).to_crs(crs_originale)
 
         logger.info("Confronto geometrie tramite hash...")
         catasto_hashes = set(gdf_catasto.geometry.map(geom_hash))
@@ -231,17 +231,17 @@ def get_dati_catasto(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune: str
                 gdf_unito = gdf_unito.drop(columns='geom_hash')
 
             # Salva solo i dati catastali minimali in EPSG:6706
-            gdf_unito_shp = gdf_unito[['geometry', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']].copy()
-            salva_shapefile_catastale(gdf_unito_shp, provincia, comune)
+            gdf_unito_gpkg = gdf_unito[['geometry', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']].copy()
+            salva_shapefile_catastale(gdf_unito_gpkg, provincia, comune)
         else:
             gdf_unito = gdf_catasto
             logger.info("Nessuna nuova geometria da elaborare.")
 
     else:
-        logger.info("Nessun shapefile preesistente: elaborazione completa.")
+        logger.info("Nessun gpkg preesistente: elaborazione completa.")
         gdf_unito = _process_geodataframe(gdf_poligoni).to_crs(crs_originale)
-        gdf_unito_shp = gdf_unito[['geometry', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']].copy()
-        salva_shapefile_catastale(gdf_unito_shp, provincia, comune)
+        gdf_unito_gpkg = gdf_unito[['geometry', 'FOGLIO', 'PARTICELLA', 'COD_COMUNE']].copy()
+        salva_shapefile_catastale(gdf_unito_gpkg, provincia, comune)
 
     # Merge finale: arricchimento del GeoDataFrame originale
     logger.info("Arricchimento finale di gdf_poligoni con dati catastali.")
@@ -263,7 +263,7 @@ def refresh_dati_catasto(gdf_poligoni: gpd.GeoDataFrame, provincia: str, comune:
     Ricalcola e riscrive i dati catastali per il comune e provincia specificati,
     sovrascrivendo eventuali dati esistenti.
     """
-    dir_path, shp_path = get_output_paths(provincia, comune)
+    dir_path, gpkg_path = get_output_paths(provincia, comune)
     if os.path.exists(dir_path):
         logger.info(f"Directory esistente {dir_path}: rimozione per refresh.")
         shutil.rmtree(dir_path)

@@ -368,8 +368,8 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff=
 
     OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
-    input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{prov_norm}_{com_norm}.shp")
-    input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{prov_norm}_{com_norm}.shp")
+    input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{prov_norm}_{com_norm}.gpkg")
+    input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{prov_norm}_{com_norm}.gpkg")
 
     n_iter = 1
     ncer_path = os.path.join(OUTPUTS_DIR, f"ncer_{prov_norm}_{com_norm}.gpkg")
@@ -381,6 +381,8 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff=
     last_ncer_gpkg_path = None
     last_ncer_gdf = None
     prev_ncer = None
+    prev_ped2 = None
+    prev_ned2 = None
 
     if os.path.exists(OUTPUTS_DIR):
         try:
@@ -464,12 +466,27 @@ def ciclo_interazione_peb_neb(provincia: str, comune: str, percentuale_autosuff=
                 os.remove(output_ncer)
         prev_ncer = ncer.copy() if not ncer.empty else None
 
-        save_if_not_empty(ped2_gdf, output_ped2)
-        save_if_not_empty(ned2_gdf, output_ned2)
-
+        # Condizione di terminazione: output vuoto
         if ped2_gdf.empty or ned2_gdf.empty:
             logger.info(f"Iterazione {n_iter}: condizione di terminazione raggiunta (uno degli output è vuoto).")
             break
+
+        # ---- CONTROLLO CICLICITA' SE DISTANZA ITERATIVA È FALSE ----
+        if not distanza_iterativa:
+            if prev_ped2 is not None and prev_ned2 is not None:
+                # Ciclicità solo se: PEB uguale, NEB uguale, E NON sono state prodotte nuove CER
+                if ped2_gdf.equals(prev_ped2) and ned2_gdf.equals(prev_ned2) and ncer.empty:
+                    print(
+                        f"[Iterazione {n_iter}] PEB e NEB identici alla precedente iterazione e nessuna nuova CER prodotta. Il ciclo viene interrotto per evitare un ciclo infinito.")
+                    logger.warning(f"PEB e NEB invariati e nessuna nuova CER prodotta. Termine forzato.")
+                    break
+            prev_ped2 = ped2_gdf.copy()
+            prev_ned2 = ned2_gdf.copy()
+        # ------------------------------------------------------------
+
+        # Salva gli output intermedi (solo se NON ciclo e NON vuoti)
+        save_if_not_empty(ped2_gdf, output_ped2)
+        save_if_not_empty(ned2_gdf, output_ned2)
 
         input_pos = output_ped2
         input_neg = output_ned2
