@@ -369,8 +369,6 @@ def ciclo_interazione_peb_neb(
     if os.path.exists(ncer_path):
         os.remove(ncer_path)
 
-    prev_ncer = prev_ped2 = prev_ned2 = None
-
     if os.path.exists(OUTPUTS_DIR):
         try:
             shutil.rmtree(OUTPUTS_DIR)
@@ -380,8 +378,8 @@ def ciclo_interazione_peb_neb(
 
     # Funzione per verificare cambiamento tra due DataFrame
     def changed(df, prev_df):
-        if prev_df is None:
-            return True
+        if (prev_df is None or prev_df.empty) and (df is None or df.empty):
+            return False
         return not df.equals(prev_df)
 
     ncer_incrementale = None
@@ -389,6 +387,10 @@ def ciclo_interazione_peb_neb(
     # Caricamento input per controllo "early stop"
     gdf_peb_init = gpd.read_file(input_pos)
     gdf_neb_init = gpd.read_file(input_neg)
+
+    prev_ncer = None
+    prev_ped2 = gdf_peb_init
+    prev_ned2 = gdf_neb_init
 
     if gdf_peb_init.empty or gdf_neb_init.empty:
         logger.info(
@@ -402,10 +404,10 @@ def ciclo_interazione_peb_neb(
         # Salva solo quello NON vuoto
         if not gdf_peb_init.empty:
             save_if_not_empty(gdf_peb_init, output_ped2)
-            print(f"Creato solo PEB output (feature: {len(gdf_peb_init)})")
+            print(f"Creato solo PEB output ({len(gdf_peb_init)} elementi)")
         if not gdf_neb_init.empty:
             save_if_not_empty(gdf_neb_init, output_ned2)
-            print(f"Creato solo NEB output (feature: {len(gdf_neb_init)})")
+            print(f"Creato solo NEB output ({len(gdf_neb_init)} elementi)")
 
         print("\n=== Totali Finali ===")
         print(f"Totale CER: 0")
@@ -415,7 +417,7 @@ def ciclo_interazione_peb_neb(
         return
 
     while True:
-        logger.info(f"\n=== ITERAZIONE {n_iter} ===")
+        print(f"\n=== ITERAZIONE {n_iter} ===")
         output_dir = os.path.join(OUTPUTS_DIR, f"output{n_iter}")
         os.makedirs(output_dir, exist_ok=True)
 
@@ -462,15 +464,28 @@ def ciclo_interazione_peb_neb(
         # Condizione di terminazione: output vuoto
         if ped2_gdf.empty or ned2_gdf.empty:
             logger.info(f"Iterazione {n_iter}: condizione di terminazione raggiunta (uno degli output è vuoto).")
+            if not ped2_gdf.empty:
+                save_if_not_empty(ped2_gdf, output_ped2)
+                logger.info(f"Creato PEB output (feature: {len(ped2_gdf)})")
+            if not ned2_gdf.empty:
+                save_if_not_empty(ned2_gdf, output_ned2)
+                logger.info(f"Creato NEB output (feature: {len(ned2_gdf)})")
             break
 
         # --- LOGICA SPECIFICA PER DISTANZA ITERATIVA O NO ---
         if not distanza_iterativa:
-            # SOLO SE modalità NON interattiva, stoppa se tutto identico
+            # SOLO SE modalità NON iterativa, stoppa se tutto identico
             if not (ncer_changed or ped2_changed or ned2_changed):
                 print(
                     f"[Iterazione {n_iter}] Risultati identici alla precedente iterazione. Iterazione non contata, ciclo interrotto.")
                 logger.warning("Tutti i risultati identici. Termine ciclo.")
+                if os.path.exists(output_dir):
+                    shutil.rmtree(output_dir)
+                    logger.info(f"Cartella {output_dir} eliminata poiché non sono stati prodotti cambiamenti.")
+                n_iter -= 1
+                output_dir = os.path.join(OUTPUTS_DIR, f"output{n_iter}")
+                output_ned2 = os.path.join(output_dir, f"outneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+                output_ped2 = os.path.join(output_dir, f"outpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
                 break
             # Se cambia, salva secondo la logica già vista
             if not ped2_gdf.empty and (ped2_changed or ncer_changed):
@@ -478,7 +493,7 @@ def ciclo_interazione_peb_neb(
             if not ned2_gdf.empty and (ned2_changed or ncer_changed):
                 save_if_not_empty(ned2_gdf, output_ned2)
         else:
-            # Se modalità interattiva, salva SEMPRE outpeb/outneb se non vuoti,
+            # Se modalità iterattiva, salva SEMPRE outpeb/outneb se non vuoti,
             # anche se non sono cambiati!
             if not ped2_gdf.empty:
                 save_if_not_empty(ped2_gdf, output_ped2)
@@ -498,6 +513,11 @@ def ciclo_interazione_peb_neb(
         prev_ncer = ncer.copy() if not ncer.empty else None
         prev_ped2 = ped2_gdf.copy() if not ped2_gdf.empty else None
         prev_ned2 = ned2_gdf.copy() if not ned2_gdf.empty else None
+
+        print(f"\n=== Risultati Iterazione {n_iter} ===")
+        print(f"CER prodotti: {len(ncer)}")
+        print(f"Totale PEB: {len(ped2_gdf)}")
+        print(f"Totale NEB: {len(ned2_gdf)}")
 
         input_pos = output_ped2
         input_neg = output_ned2

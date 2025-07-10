@@ -78,6 +78,14 @@ def main():
         "In aggiunta, se lo shapefile contiene la colonna opzionale 'delta_UHI', il suo valore (espresso in kWh/anno) verrà sommato alla "
         "domanda energetica finale, per tenere conto dell'incremento dovuto all'effetto isola di calore urbana."
         "\n"
+        "In alternativa al file DSM, puoi fornire un file tif di irradianza annua già calcolato (kWh/mq/annui).\n"
+        "Nella directory 'offerta/grass_gis/irradiance_tif' deve essere presente un file con il nome: irradianza_annua_provincia_comune_kwh.tif\n"
+        "Anche qui, usare solo minuscole e trattini per spazi o apostrofi.\n"
+        "Esempi:\n"
+        "irradianza_annua_napoli_poggiomarino_kwh.tif\n"
+        "irradianza_annua_napoli_torre-annunziata_kwh.tif\n"
+        "irradianza_annua_napoli_pomigliano-d-arco_kwh.tif\n"
+        "\n"
         "L'analisi verrà effettuata sull'intersezione tra i fabbricati e il DSM forniti.\n"
     )
 
