@@ -10,7 +10,19 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 def raster_is_empty(raster_path: str) -> bool:
-    """Ritorna True se tutte le celle sono NaN."""
+    """
+    Verifica se tutte le celle di un raster sono NaN.
+
+    Parametri
+    ----------
+    raster_path : str
+        Percorso al file raster da analizzare.
+
+    Restituisce
+    ----------
+    bool
+        True se tutte le celle sono NaN o se il file non è leggibile, False altrimenti.
+    """
     try:
         with rasterio.open(raster_path) as src:
             arr = src.read(1)
@@ -21,10 +33,20 @@ def raster_is_empty(raster_path: str) -> bool:
 
 def load_dot_env(env_path: str = ".env") -> None:
     """
-    Carica le variabili d'ambiente da un file .env specificato.
-    Se non viene passato un path, cerca ".env" nella directory corrente.
+    Carica le variabili d'ambiente da un file .env.
 
-    :param env_path: Percorso al file .env (può essere assoluto o relativo)
+    Parametri
+    ----------
+    env_path : str, opzionale
+        Percorso al file .env (default: ".env" nella directory corrente).
+
+    Restituisce
+    ----------
+    None
+
+    Note
+    ----
+    Se il file non esiste, viene loggato un warning.
     """
     abs_path = os.path.abspath(env_path)
     if not os.path.exists(abs_path):
@@ -35,12 +57,39 @@ def load_dot_env(env_path: str = ".env") -> None:
     logger.info(f"Variabili d'ambiente caricate da: {abs_path}")
 
 def safe_name(nome: str) -> str:
-    """Restituisce il nome in minuscolo e con spazi sostituiti da -."""
+    """
+    Normalizza un nome: tutto minuscolo, spazi e apostrofi sostituiti da '-'.
+
+    Parametri
+    ----------
+    nome : str
+        Nome da normalizzare.
+
+    Restituisce
+    ----------
+    str
+        Nome normalizzato.
+    """
     return nome.strip().lower().replace(' ', '-').replace("'","-")
 
 def get_regione_from_provincia(provincia: str) -> str:
     """
-    Mappa il nome di una provincia alla sua regione italiana.
+    Restituisce il nome della regione italiana a partire dal nome (normalizzato) di una provincia.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+
+    Restituisce
+    ----------
+    str
+        Nome della regione corrispondente.
+
+    Solleva
+    -------
+    ValueError
+        Se la provincia non è riconosciuta.
     """
     provincia = safe_name(provincia)
 
@@ -106,8 +155,18 @@ def get_regione_from_provincia(provincia: str) -> str:
 def get_pannelli() -> pd.DataFrame:
     """
     Carica e normalizza il file panels.csv contenente i dati dei pannelli fotovoltaici.
-    Verifica che il file esista e contenga dati validi.
-    Utilizza logging per messaggi informativi e di debug.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con i dati dei pannelli.
+
+    Solleva
+    -------
+    FileNotFoundError
+        Se il file non è trovato.
+    ValueError
+        Se il file è vuoto o non valido.
     """
     pannelli_path = os.path.join('offerta', 'panel', 'panels.csv')
 
@@ -194,7 +253,27 @@ def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) 
       - ID_FAB + geometria + sup_risc + vol_risc + sup_disp: ritorna 'zc_suris_volris_supdi'
       - Se presente la colonna opzionale delta_UHI, non la eliminare (vale per i tre modelli citati)
     - Rinomina tutti i file nella cartella con il prefisso 'fabbricati_{provincia}_{comune}'
-    - In caso di errore solleva ValueError o RuntimeError.
+
+    Parametri
+    ----------
+    dir_path : str
+        Directory principale contenente la sottocartella fabbricati.
+    provincia : str
+        Nome normalizzato della provincia.
+    comune : str
+        Nome normalizzato del comune.
+
+    Restituisce
+    ----------
+    str
+        Uno tra 'zc_range', 'zc_suris_volris', 'zc_suris_volris_supdi'.
+
+    Solleva
+    -------
+    ValueError
+        In caso di struttura o colonne incoerenti.
+    RuntimeError
+        In caso di errori di lettura shapefile.
     """
     base_name = f"fabbricati_{provincia}_{comune}"
     target_dir = _get_target_dir(dir_path, base_name)
@@ -246,6 +325,24 @@ def normalize_fabbricati_input_auto(dir_path: str, provincia: str, comune: str) 
     return return_string
 
 def normalize_vincoli_input(dir_path: str, provincia: str, comune: str) -> bool:
+    """
+    Normalizza la directory dei vincoli: mantiene solo la geometria nello shapefile e
+    rinomina i file secondo convenzione.
+
+    Parametri
+    ----------
+    dir_path : str
+        Directory principale dei dati.
+    provincia : str
+        Nome normalizzato della provincia.
+    comune : str
+        Nome normalizzato del comune.
+
+    Restituisce
+    ----------
+    bool
+        True se la normalizzazione ha successo, False altrimenti.
+    """
     base_name = f"vincoli_{provincia}_{comune}"
     target_dir = os.path.join(dir_path, base_name)
     if not os.path.isdir(target_dir):
@@ -276,13 +373,29 @@ def normalize_vincoli_input(dir_path: str, provincia: str, comune: str) -> bool:
 
 def normalize_dsm_input(dir_path: str, tif_path: str, provincia: str, comune: str) -> None:
     """
-    Controlla se nella directory specificata è presente esattamente il file DSM_{provincia}_{comune}.tif.
-    Se non esiste, controlla se esiste irradianza_annua_{provincia}_{comune}_kwh.tif in tif_path.
-    Solleva:
-        ValueError se la directory non esiste.
-        FileNotFoundError se nessuno dei due file esiste.
-    Restituisce:
-        None se tutto ok.
+    Verifica la presenza dei file DSM o irradianza, secondo convenzione, nella directory indicata.
+
+    Parametri
+    ----------
+    dir_path : str
+        Directory dove dovrebbe trovarsi il DSM.
+    tif_path : str
+        Directory dove cercare il file di irradianza.
+    provincia : str
+        Nome normalizzato della provincia.
+    comune : str
+        Nome normalizzato del comune.
+
+    Restituisce
+    ----------
+    None
+
+    Solleva
+    -------
+    ValueError
+        Se la directory non esiste.
+    FileNotFoundError
+        Se nessuno dei file attesi è trovato.
     """
     expected_dsm = f"DSM_{provincia}_{comune}.tif"
     expected_irr = f"irradianza_annua_{provincia}_{comune}_kwh.tif"
@@ -311,8 +424,17 @@ def normalize_dsm_input(dir_path: str, tif_path: str, provincia: str, comune: st
 
 def get_file_modification_date(file_path: str) -> str:
     """
-    Restituisce la data e ora dell'ultima modifica del file in formato leggibile.
-    Se il file non esiste, ritorna 'File non trovato'.
+    Restituisce la data e ora dell'ultima modifica del file, in formato leggibile.
+
+    Parametri
+    ----------
+    file_path : str
+        Percorso del file.
+
+    Restituisce
+    ----------
+    str
+        Data e ora dell'ultima modifica, oppure 'File non trovato' se il file non esiste.
     """
     if os.path.isfile(file_path):
         print(f"Controllo ultima modifica per: {file_path}")
@@ -323,8 +445,18 @@ def get_file_modification_date(file_path: str) -> str:
 
 def configure_logging_globale(attivo: bool, livello: int = logging.INFO) -> None:
     """
-    Configura il logging globale: visibile anche da altri moduli.
-    Se è già stato configurato, non fa nulla.
+    Configura il logging globale del progetto, se non già configurato.
+
+    Parametri
+    ----------
+    attivo : bool
+        True per attivare il logging, False per silenziarlo.
+    livello : int, opzionale
+        Livello di logging (default: logging.INFO).
+
+    Restituisce
+    ----------
+    None
     """
     if not logging.getLogger().hasHandlers():
         logging.basicConfig(
@@ -334,11 +466,18 @@ def configure_logging_globale(attivo: bool, livello: int = logging.INFO) -> None
 
 def configure_logging_if_main(name: str, level: int = logging.INFO) -> None:
     """
-    Configura il logging solo se il modulo viene eseguito direttamente (__main__).
+    Configura il logging solo se il modulo viene eseguito direttamente (main).
 
-    Args:
-        name (str): Il valore di __name__ dal modulo chiamante.
-        level (int): Il livello di logging da usare (default: logging.INFO).
+    Parametri
+    ----------
+    name : str
+        Il valore di __name__ del modulo chiamante.
+    level : int, opzionale
+        Livello di logging da usare (default: logging.INFO).
+
+    Restituisce
+    ----------
+    None
     """
     if name == "__main__":
         logging.basicConfig(
@@ -348,7 +487,17 @@ def configure_logging_if_main(name: str, level: int = logging.INFO) -> None:
 
 def get_best_utm_epsg(gdf: gpd.GeoDataFrame) -> int:
     """
-    Restituisce l'EPSG UTM più adatto sulla base del centroide del GeoDataFrame.
+    Restituisce il codice EPSG UTM più adatto in base al centroide geometrico del GeoDataFrame.
+
+    Parametri
+    ----------
+    gdf : gpd.GeoDataFrame
+        GeoDataFrame di riferimento.
+
+    Restituisce
+    ----------
+    int
+        Codice EPSG UTM più idoneo (em. nord o sud).
     """
     centroid = gdf.geometry.unary_union.centroid
     lon, lat = centroid.x, centroid.y

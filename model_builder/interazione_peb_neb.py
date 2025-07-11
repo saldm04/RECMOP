@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""
-Script: interazione_peb_neb.py (versione aggiornata con nuove funzionalità)
-
-Descrizione:
-    Riproduce la logica del modello QGIS "INTERAZIONE PEB-NEB" con le nuove funzionalità
-    di autosufficienza (percentuale variabile) e creazione NCER, mantenendo la struttura dei percorsi originale.
-"""
 import logging
 import os
 import sys
@@ -22,8 +14,32 @@ logger = logging.getLogger(__name__)
 
 class InterazionePebNeb:
     """
-    Classe principale che implementa la logica di interazione PEB-NEB con le nuove funzionalità.
-    """
+       Modello per l’interazione energetica tra edifici PEB e NEB (positivi e negativi),
+       ispirato al modello builder QGIS con estensioni per l’autosufficienza e la creazione di comunità energetiche (NCER).
+
+       Questa classe gestisce l’intero flusso: lettura, validazione, pulizia, join spaziali, calcoli energetici e logiche
+       di aggregazione tra edifici, restituendo come output i dataset incrementali delle comunità (NCER), dei PED (positivi)
+       e dei NED (negativi), pronti per successive analisi o visualizzazioni.
+
+       Le principali funzionalità includono:
+       - Lettura e validazione robusta dei dati spaziali in ingresso (GeoPackage, Shapefile)
+       - Gestione automatica dei sistemi di riferimento e della validità geometrica
+       - Algoritmo nearest-neighbor ottimizzato con soglia di distanza personalizzabile
+       - Calcolo dinamico dei surplus/deficit e della percentuale di autosufficienza
+       - Filtraggio, join e dissoluzione di layer in linea con il flusso QGIS
+       - Produzione dei layer finali NCER (Comunità Energetiche), PED (edifici positivi) e NED (edifici negativi)
+
+       Attributi
+       ----------
+       results : dict
+           Dizionario che contiene i risultati delle elaborazioni principali.
+
+       Note
+       -----
+       Per la riproduzione fedele della pipeline QGIS sono richieste strutture di input conformi
+       (colonne ID_P, surplus per PEB e ID_N, deficit per NEB) e CRS coerente.
+       Tutti i passaggi intermedi sono loggati tramite il modulo logging.
+       """
 
     def __init__(self):
         self.results = {}
@@ -335,7 +351,22 @@ class InterazionePebNeb:
 
 def save_if_not_empty(gdf: gpd.GeoDataFrame, path: str, driver: str = 'GPKG', **kwargs):
     """
-    Salva il GeoDataFrame solo se non vuoto. Se esiste un vecchio file ma il nuovo è vuoto, lo elimina.
+    Salva un GeoDataFrame su file solo se non vuoto; elimina eventuali file preesistenti se il nuovo output è vuoto.
+
+    Parametri
+    ----------
+    gdf : gpd.GeoDataFrame
+        Il GeoDataFrame da salvare.
+    path : str
+        Il percorso completo del file di output (inclusa estensione).
+    driver : str, opzionale
+        Driver di scrittura (default 'GPKG').
+    **kwargs :
+        Argomenti addizionali passati a `to_file`.
+
+    Note
+    -----
+    Se il GeoDataFrame è vuoto e il file già esiste, il file viene eliminato.
     """
     if not gdf.empty:
         gdf.to_file(path, driver=driver, **kwargs)
@@ -350,6 +381,34 @@ def ciclo_interazione_peb_neb(
         distanza_iterativa=False,
         distanza_max=None
     ) -> None:
+    """
+    Esegue il ciclo iterativo di interazione tra edifici PEB e NEB per generare le comunità energetiche (CER),
+    gestendo output incrementali e condizioni di arresto. Implementa la logica QGIS "INTERAZIONE PEB-NEB"
+    con supporto per autosufficienza variabile e soglia di distanza opzionale.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia (anche con caratteri speciali, sarà normalizzato).
+    comune : str
+        Nome del comune (anche con caratteri speciali, sarà normalizzato).
+    percentuale_autosuff : float, opzionale
+        Soglia minima di autosufficienza (in percentuale) per aggregare edifici nella stessa comunità (default: 55).
+    distanza_iterativa : bool, opzionale
+        Se True, la distanza massima tra edifici viene richiesta ad ogni iterazione (modalità interattiva).
+    distanza_max : float, opzionale
+        Distanza massima (in metri) per accoppiare edifici PEB-NEB (se None, nessun limite).
+
+    Returns
+    -------
+    None
+
+    Note
+    -----
+    - Crea output multipli in cartelle strutturate per ogni iterazione.
+    - Stampa i totali finali di CER, PEB, NEB e salva i risultati intermedi e incrementali.
+    - Se uno degli input iniziali è vuoto, il ciclo si interrompe anticipatamente.
+    """
     prov_norm = safe_name(provincia)
     com_norm = safe_name(comune)
     prov_com = f"{prov_norm}_{com_norm}"
@@ -541,9 +600,3 @@ def ciclo_interazione_peb_neb(
         logger.warning(f"Errore durante il conteggio finale: {e}")
 
     logger.info(f"Ciclo completato! File NCER incrementale: {ncer_path}")
-
-
-if __name__ == "__main__":
-    # Abilita logging solo se eseguito standalone
-    configure_logging_if_main(__name__)
-    ciclo_interazione_peb_neb("Salerno", "Padula")

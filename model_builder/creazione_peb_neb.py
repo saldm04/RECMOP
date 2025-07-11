@@ -14,6 +14,29 @@ SHAPE_IN_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', 'Data_Collection', '
 OUTPUT_MODEL_BUILDER = os.path.abspath(os.path.join(BASE_DIR, '..', 'model_builder_shapefiles'))
 
 def join_domanda_offerta(provincia: str, comune: str, gdf_domanda: gpd.GeoDataFrame, gdf_offerta: gpd.GeoDataFrame):
+    """
+    Esegue il join tra domanda energetica e offerta energetica sui fabbricati (ID_FAB).
+    Salva il risultato in un file GPKG unico.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    gdf_domanda : geopandas.GeoDataFrame
+        GeoDataFrame contenente la domanda energetica per fabbricato.
+    gdf_offerta : geopandas.GeoDataFrame
+        GeoDataFrame contenente l'offerta energetica per fabbricato.
+
+    Restituisce
+    ----------
+    None
+
+    Effetti
+    -------
+    Salva su disco il file GPKG risultante dal join.
+    """
     provincia_safe = safe_name(provincia)
     comune_safe = safe_name(comune)
     logger.info(f"Avvio join domanda-offerta per {provincia_safe} - {comune_safe}")
@@ -56,6 +79,26 @@ def join_domanda_offerta(provincia: str, comune: str, gdf_domanda: gpd.GeoDataFr
     logger.info("Join domanda-offerta completato.")
 
 def crea_peb_neb(provincia: str, comune: str):
+    """
+    Genera i dataset PEB (edifici positivi) e NEB (edifici negativi) per domanda e offerta energetica.
+    Salva i relativi file GPKG per input ai modelli successivi.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+
+    Restituisce
+    ----------
+    tuple of int
+        Numero di edifici PEB e NEB generati (len(gdf_peb), len(gdf_neb)).
+
+    Effetti
+    -------
+    Salva su disco i GPKG di PEB e NEB, e il join domanda-offerta.
+    """
     provincia_safe = safe_name(provincia)
     comune_safe = safe_name(comune)
     logger.info(f"Avvio generazione PEB e NEB per {provincia_safe} - {comune_safe}")
@@ -129,9 +172,3 @@ def crea_peb_neb(provincia: str, comune: str):
     logger.info("Generazione gpkg PEB e NEB completata.")
 
     return len(gdf_peb), len(gdf_neb)
-
-# --- ESEMPIO USO ---
-if __name__ == "__main__":
-    # Abilita logging solo se eseguito standalone
-    configure_logging_if_main(__name__)
-    crea_peb_neb("salerno", "padula")

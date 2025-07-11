@@ -76,6 +76,21 @@ HEADERS = {
 # =========================
 
 def format_range(min_val: int, max_val: int) -> str:
+    """
+    Restituisce una stringa leggibile per rappresentare un intervallo (range) numerico.
+
+    Parametri
+    ----------
+    min_val : int
+        Valore minimo dell'intervallo.
+    max_val : int
+        Valore massimo dell'intervallo.
+
+    Restituisce
+    ----------
+    str
+        Rappresentazione testuale dell'intervallo (es: '<50', '50-100', '>5000').
+    """
     if min_val == -1000000000:
         return f"<{max_val}"
     elif max_val == 1000000000:
@@ -85,10 +100,13 @@ def format_range(min_val: int, max_val: int) -> str:
 
 def estrai_dati_siape_zc_range() -> pd.DataFrame:
     """
-    Estrae e struttura i dati dal portale SIAPE in un DataFrame.
+    Estrae i dati aggregati SIAPE per zona climatica e periodo edilizio,
+    effettuando una chiamata POST per ogni combinazione.
 
-    Returns:
-        pd.DataFrame: Dati aggregati per zona climatica e periodo edilizio.
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con colonne: 'zona_climatica', 'periodo', 'EPgl_nren', 'EPgl_ren', 'CO2'.
     """
     records = []
 
@@ -134,8 +152,12 @@ def estrai_dati_siape_zc_range() -> pd.DataFrame:
 
 def estrai_dati_siape_zc_suris_volris() -> pd.DataFrame:
     """
-    Estrae e struttura i dati dal portale SIAPE in un DataFrame,
-    raggruppati per zona climatica, superficie riscaldata, volume riscaldato.
+    Estrae i dati SIAPE raggruppati per zona climatica, superficie riscaldata (SURIS) e volume riscaldato (VOLRIS).
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con colonne: 'zona_climatica', 'suris_range', 'volris_range', 'EPgl_nren', 'EPgl_ren', 'CO2'.
     """
     records = []
     for zona in ZONES:
@@ -186,8 +208,12 @@ def estrai_dati_siape_zc_suris_volris() -> pd.DataFrame:
 
 def estrai_dati_siape_zc_suris_volris_supdi() -> pd.DataFrame:
     """
-    Estrae e struttura i dati dal portale SIAPE in un DataFrame,
-    raggruppati per zona climatica, superficie riscaldata, volume riscaldato e superficie disperdente.
+    Estrae i dati SIAPE raggruppati per zona climatica, superficie riscaldata (SURIS), volume riscaldato (VOLRIS) e superficie disperdente (SUPDI).
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con colonne: 'zona_climatica', 'suris_range', 'volris_range', 'supdi_range', 'EPgl_nren', 'EPgl_ren', 'CO2'.
     """
     records = []
     for zona in ZONES:
@@ -245,6 +271,23 @@ def estrai_dati_siape_zc_suris_volris_supdi() -> pd.DataFrame:
 # ========================
 
 def salva_dati_siape(df: pd.DataFrame, tipo: str, sep: str = ";") -> pd.DataFrame:
+    """
+    Salva il DataFrame SIAPE in formato CSV nella cartella di output, utilizzando il nome file appropriato per il tipo scelto.
+
+    Parametri
+    ----------
+    df : pd.DataFrame
+        DataFrame da salvare.
+    tipo : str
+        Tipo di aggregazione (ad esempio 'zc_range', 'zc_suris_volris', ecc.).
+    sep : str, opzionale
+        Separatore del CSV (default: ';').
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        Il DataFrame fornito, per eventuale chaining.
+    """
     filename = OUTPUT_FILENAMES[tipo]
     percorso_output = os.path.join(OUTPUT_DIR, filename)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -260,6 +303,19 @@ def salva_dati_siape(df: pd.DataFrame, tipo: str, sep: str = ";") -> pd.DataFram
 # ========================
 
 def run_estrazione_siape(tipo: str) -> pd.DataFrame:
+    """
+    Esegue il flusso di estrazione e salvataggio dei dati SIAPE per il tipo specificato.
+
+    Parametri
+    ----------
+    tipo : str
+        Tipo di aggregazione desiderata ('zc_range', 'zc_suris_volris' o 'zc_suris_volris_supdi').
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame estratto e salvato.
+    """
     estrattori = {
         "zc_range": estrai_dati_siape_zc_range,
         "zc_suris_volris": estrai_dati_siape_zc_suris_volris,
@@ -274,7 +330,17 @@ def run_estrazione_siape(tipo: str) -> pd.DataFrame:
 
 def get_dati_siape(tipo: str) -> pd.DataFrame:
     """
-    Carica il DataFrame da file CSV se esiste, altrimenti esegue l’estrazione.
+    Carica i dati SIAPE dal file CSV corrispondente se esiste, altrimenti avvia l’estrazione per il tipo richiesto.
+
+    Parametri
+    ----------
+    tipo : str
+        Tipo di aggregazione desiderata ('zc_range', 'zc_suris_volris' o 'zc_suris_volris_supdi').
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con i dati SIAPE.
     """
     filename = OUTPUT_FILENAMES[tipo]
     percorso_output = os.path.join(OUTPUT_DIR, filename)
@@ -283,9 +349,3 @@ def get_dati_siape(tipo: str) -> pd.DataFrame:
         return pd.read_csv(percorso_output, sep=";", encoding="utf-8")
     logger.info("Dati SIAPE non trovati, avvio estrazione...")
     return run_estrazione_siape(tipo)
-
-# Esempio di main
-if __name__ == '__main__':
-    # esempio: get_dati_siape("zc_range") oppure "zc_suris_volris", ecc.
-    configure_logging_if_main(__name__)
-    dati = run_estrazione_siape("zc_suris_volris_supdi")

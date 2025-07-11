@@ -35,11 +35,50 @@ SHAPE_OUT_DIR = os.path.join(BASE_DIR, 'Data_Collection', 'shapefiles')
 PANEL_DATA_PATH = os.path.join(BASE_DIR, 'offerta', 'panel', 'panels.csv')
 
 def generate_temp_location(epsg, comune, provincia):
+    """
+    Genera un nome univoco per una location temporanea di GRASS GIS.
+
+    Parametri
+    ----------
+    epsg : int
+        Codice EPSG del sistema di riferimento.
+    comune : str
+        Nome del comune.
+    provincia : str
+        Nome della provincia.
+
+    Restituisce
+    ----------
+    str
+        Nome della location temporanea.
+    """
     unique = uuid.uuid4().hex[:8]
     return f'tmp_location_{epsg}_{safe_name(comune)}_{safe_name(provincia)}_{unique}'
 
 def create_grass_location(grass_base, gisdb, location, epsg_code) -> None:
-    """Crea una location GRASS se non esiste."""
+    """
+    Crea una location GRASS GIS, se non esiste già.
+
+    Parametri
+    ----------
+    grass_base : str
+        Percorso alla directory base di GRASS.
+    gisdb : str
+        Directory del database GIS.
+    location : str
+        Nome della location da creare.
+    epsg_code : int
+        Codice EPSG del sistema di riferimento.
+
+    Restituisce
+    ----------
+    None
+
+    Solleva
+    -------
+    subprocess.CalledProcessError
+        Se il comando di creazione location fallisce.
+    """
     loc_path = os.path.join(gisdb, location)
     if not os.path.exists(loc_path):
         logger.info(f'Creazione GRASS location {location} con EPSG:{epsg_code}')
@@ -48,6 +87,20 @@ def create_grass_location(grass_base, gisdb, location, epsg_code) -> None:
         logger.info(f"Comando GRASS GIS per creazione location: {grass_bin} -c EPSG:{epsg_code} -e {loc_path}")
 
 def remove_grass_location(grass_gisdb, location_name):
+    """
+    Rimuove una location GRASS temporanea, se esiste.
+
+    Parametri
+    ----------
+    grass_gisdb : str
+        Directory del database GIS.
+    location_name : str
+        Nome della location da eliminare.
+
+    Restituisce
+    ----------
+    None
+    """
     import shutil
     loc_path = os.path.join(grass_gisdb, location_name)
     if os.path.exists(loc_path):
@@ -55,7 +108,25 @@ def remove_grass_location(grass_gisdb, location_name):
         logger.info(f"Location GRASS temporanea rimossa: {loc_path}")
 
 def init_grass_environment(grass_base, gisdb, location, mapset):
-    """Inizializza le variabili d'ambiente di GRASS GIS e ritorna il modulo grass.script."""
+    """
+    Inizializza le variabili d'ambiente di GRASS GIS e ritorna il modulo grass.script.
+
+    Parametri
+    ----------
+    grass_base : str
+        Directory base di GRASS.
+    gisdb : str
+        Database GIS di GRASS.
+    location : str
+        Nome della location.
+    mapset : str
+        Nome del mapset.
+
+    Restituisce
+    ----------
+    grass.script
+        Modulo Python di GRASS GIS.
+    """
     logger.debug('Imposto ambiente GRASS GIS')
     os.environ['GISBASE'] = grass_base
     os.environ['PATH'] = os.pathsep.join([
@@ -74,7 +145,21 @@ def init_grass_environment(grass_base, gisdb, location, mapset):
     return gs
 
 def reproject_if_needed(src_crs, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Riproietta il GeoDataFrame per matchare src_crs."""
+    """
+    Riproietta il GeoDataFrame sul CRS specificato, se necessario.
+
+    Parametri
+    ----------
+    src_crs : rasterio.crs.CRS
+        CRS di destinazione.
+    gdf : geopandas.GeoDataFrame
+        GeoDataFrame di input.
+
+    Restituisce
+    ----------
+    geopandas.GeoDataFrame
+        GeoDataFrame proiettato sul CRS richiesto.
+    """
     if gdf.crs.to_epsg() != src_crs.to_epsg():
         logger.warning('CRS non corrispondente: eseguo riproiezione vettoriale')
         return gdf.to_crs(src_crs)
@@ -82,7 +167,24 @@ def reproject_if_needed(src_crs, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf
 
 def get_epsg(dem_path: str) -> int:
-    """Estrae il codice EPSG dal file DEM."""
+    """
+    Estrae il codice EPSG dal file DEM raster.
+
+    Parametri
+    ----------
+    dem_path : str
+        Percorso al file DEM.
+
+    Restituisce
+    ----------
+    int
+        Codice EPSG del raster.
+
+    Solleva
+    -------
+    ValueError
+        Se il CRS non ha un EPSG associato.
+    """
     logger.debug(f'Leggo CRS da DEM: {dem_path}')
     with rasterio.open(dem_path) as src:
         epsg = src.crs.to_epsg()
@@ -93,7 +195,19 @@ def get_epsg(dem_path: str) -> int:
     return epsg
 
 def get_centroid(shp_path: str) -> tuple:
-    """Ritorna lat, lon del centroide in WGS84."""
+    """
+    Restituisce la latitudine e longitudine (WGS84) del centroide geometrico di uno shapefile.
+
+    Parametri
+    ----------
+    shp_path : str
+        Percorso al file shapefile.
+
+    Restituisce
+    ----------
+    tuple
+        Latitudine, longitudine del centroide.
+    """
     logger.debug(f'Calcolo centroide per: {shp_path}')
     gdf = gpd.read_file(shp_path)
     gdf = reproject_if_needed(gdf.crs, gdf).to_crs(epsg=4326)
@@ -102,7 +216,21 @@ def get_centroid(shp_path: str) -> tuple:
     return centroid.y, centroid.x
 
 def get_linke_turbidity(lat: float, lon: float) -> dict:
-    """Recupera i valori di turbidity Linke per ciascun mese."""
+    """
+    Recupera i valori di Linke Turbidity per ciascun mese in una posizione geografica.
+
+    Parametri
+    ----------
+    lat : float
+        Latitudine.
+    lon : float
+        Longitudine.
+
+    Restituisce
+    ----------
+    dict
+        Dizionario {mese: valore turbidity}.
+    """
     logger.debug('Richiedo turbidity Linke')
     mid_days = []
     for m in range(1, 13):
@@ -116,6 +244,21 @@ def get_linke_turbidity(lat: float, lon: float) -> dict:
     return vals
 
 def resample_dsm_to_1x1(src_path, out_path):
+    """
+    Risampia un raster a risoluzione 1x1 metri.
+
+    Parametri
+    ----------
+    src_path : str
+        Percorso al raster di input.
+    out_path : str
+        Percorso dove salvare il raster risamplato.
+
+    Restituisce
+    ----------
+    str
+        Percorso al raster (risamplato o originale).
+    """
     with rasterio.open(src_path) as src:
         res_x, res_y = src.res  # tuple (xres, yres)
         if max(res_x, res_y) <= 2:
@@ -149,12 +292,42 @@ def resample_dsm_to_1x1(src_path, out_path):
         return out_path
 
 def needs_resampling_to_1x1(tif_path):
+    """
+    Controlla se il raster necessita di essere risamplato a risoluzione 1x1m.
+
+    Parametri
+    ----------
+    tif_path : str
+        Percorso al file raster.
+
+    Restituisce
+    ----------
+    bool
+        True se la risoluzione maggiore di 2m, False altrimenti.
+    """
     with rasterio.open(tif_path) as src:
         res_x, res_y = src.res
     return max(res_x, res_y) > 2
 
 def solar_radiation_pipeline(provincia: str, comune: str, location_tmp: str) -> str:
-    """Genera il raster annuale di irradianza in kWh, resampling solo sull'output finale."""
+    """
+    Esegue l’intera pipeline GRASS GIS per generare il raster annuale di irradianza
+    (kWh/m² anno) per tutti i fabbricati del comune/provincia.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    location_tmp : str
+        Nome della location temporanea di GRASS GIS.
+
+    Restituisce
+    ----------
+    str
+        Percorso al raster GTiff annuale di irradianza prodotto.
+    """
     prov_safe = safe_name(provincia)
     com_safe = safe_name(comune)
     output_tif = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov_safe}_{com_safe}_kwh.tif')
@@ -229,7 +402,25 @@ def solar_radiation_pipeline(provincia: str, comune: str, location_tmp: str) -> 
     return output_tif
 
 def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int, use_vincoli: bool = True) -> gpd.GeoDataFrame:
-    """Calcola l'offerta energetica per ogni fabbricato escludendo quelli all'interno dei vincoli. Salva gpkg finale."""
+    """
+    Calcola l'offerta energetica per ogni fabbricato del comune, escludendo quelli nei vincoli.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    idx_panel : int
+        Indice del pannello fotovoltaico da utilizzare.
+    use_vincoli : bool, opzionale
+        Se True, esclude i fabbricati all’interno dei vincoli.
+
+    Restituisce
+    ----------
+    geopandas.GeoDataFrame
+        GeoDataFrame dei fabbricati con offerta energetica e dettagli pannello.
+    """
     prov_safe = safe_name(provincia)
     com_safe = safe_name(comune)
     raster = os.path.join(OUTPUT_DIR, f'irradianza_annua_{prov_safe}_{com_safe}_kwh.tif')
@@ -330,8 +521,30 @@ def calculate_building_irradiance(provincia: str, comune: str, idx_panel: int, u
 def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeline_func=None, use_vincoli: bool = True):
     """
     Calcola l'offerta energetica per ogni fabbricato, rilanciando la pipeline se il risultato è vuoto.
-    pipeline_func: funzione da chiamare per rigenerare i dati se necessario (es: solar_radiation_pipeline).
-    Max 2 tentativi; se ancora vuoto solleva RuntimeError.
+    Tenta max 2 volte.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    idx_panel : int
+        Indice del pannello fotovoltaico da utilizzare.
+    pipeline_func : callable, opzionale
+        Funzione da chiamare per rigenerare i dati se necessario.
+    use_vincoli : bool, opzionale
+        Se True, esclude i fabbricati all’interno dei vincoli.
+
+    Restituisce
+    ----------
+    geopandas.GeoDataFrame
+        GeoDataFrame con l’offerta energetica.
+
+    Solleva
+    -------
+    RuntimeError
+        Se il calcolo non restituisce dati validi dopo 2 tentativi.
     """
     tentativi = 2
     prov_safe = safe_name(provincia)
@@ -359,8 +572,27 @@ def safe_building_irradiance(provincia: str, comune: str, idx_panel: int, pipeli
 
 def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int, use_vincoli: bool = True):
     """
-    Orchestratore: se serve aggiorna raster con location temporanea, poi esegue calcolo offerta.
-    Gestisce anche il caso in cui manchi il raster di irradianza, senza tentare rigenerazione se manca il DSM.
+    Orchestratore principale: aggiorna il raster di irradianza se serve e calcola l’offerta energetica.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    idx_panel : int
+        Indice del pannello da utilizzare.
+    use_vincoli : bool, opzionale
+        Se True, esclude i fabbricati nei vincoli.
+
+    Restituisce
+    ----------
+    geopandas.GeoDataFrame
+        GeoDataFrame con l’offerta energetica.
+
+    Solleva
+    -------
+    Propaga eventuali errori dalle pipeline sottostanti.
     """
     prov = safe_name(provincia)
     com = safe_name(comune)
@@ -397,6 +629,25 @@ def calcolo_offerta_energetica(provincia: str, comune: str, idx_panel: int, use_
         raise
 
 def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int, use_vincoli: bool = True):
+    """
+    Rigenera da zero il raster di irradianza e tutti i dati di offerta energetica per il comune specificato.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    idx_panel : int
+        Indice del pannello da utilizzare.
+    use_vincoli : bool, opzionale
+        Se True, esclude i fabbricati nei vincoli.
+
+    Restituisce
+    ----------
+    geopandas.GeoDataFrame
+        GeoDataFrame con l’offerta energetica aggiornata.
+    """
     prov = safe_name(provincia)
     com = safe_name(comune)
     dem = os.path.join(DSM_BASE, f'DSM_{prov}_{com}.tif')
@@ -411,11 +662,3 @@ def refresh_offerta_energetica(provincia: str, comune: str, idx_panel: int, use_
     except Exception as e:
         remove_grass_location(GRASS_GISDB, location_tmp)
         raise
-
-if __name__ == '__main__':
-    # Esempio di esecuzione
-    # Abilita logging solo se eseguito standalone
-    configure_logging_if_main(__name__)
-    prov, com, idx = 'Salerno', 'padula', 0
-    _ = calcolo_offerta_energetica(prov, com, idx)
-    logger.info('Processo completato')

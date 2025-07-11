@@ -59,7 +59,30 @@ def estrai_join_data(
     get_normattiva=get_dati_normattiva
 ) -> pd.DataFrame:
     """
-    Esegue estrazione, merge e fuzzy-matching dei dati per la regione specificata.
+    Esegue l’estrazione, il merge e il fuzzy-matching dei dati di una regione.
+
+    Il flusso:
+      1. Estrae i dati delle basi territoriali, delle variabili censuarie e di Normattiva.
+      2. Esegue il merge base + censuarie sulle sezioni censuarie.
+      3. Mappa la sigla della provincia al nome completo.
+      4. Esegue un join diretto sui comuni e province.
+      5. Esegue un fuzzy match sui comuni senza join diretto, limitando la ricerca alla provincia.
+
+    Parametri
+    ----------
+    regione_input : str
+        Nome della regione da elaborare.
+    get_basi_territoriali : callable, opzionale
+        Funzione di estrazione delle basi territoriali.
+    get_variabili_censuarie : callable, opzionale
+        Funzione di estrazione delle variabili censuarie.
+    get_normattiva : callable, opzionale
+        Funzione di estrazione dei dati climatici Normattiva.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame finale joinato con tutte le informazioni arricchite.
     """
     # 1) Estrazione dati
     df_base = get_basi_territoriali(regione_input)
@@ -136,6 +159,25 @@ def estrai_join_data(
 
 
 def salva_join_data(df: pd.DataFrame, regione_input: str, output_dir: str = OUTPUT_DIR) -> str:
+    """
+    Salva il DataFrame joinato in un file CSV nella cartella di output.
+
+    Se il file esiste già, viene sovrascritto.
+
+    Parametri
+    ----------
+    df : pd.DataFrame
+        Il DataFrame da salvare.
+    regione_input : str
+        Nome della regione (utilizzato per generare il nome del file).
+    output_dir : str, opzionale
+        Directory di destinazione (default: OUTPUT_DIR).
+
+    Restituisce
+    ----------
+    str
+        Percorso assoluto del file CSV salvato.
+    """
     os.makedirs(output_dir, exist_ok=True)
     safe_region = safe_name(regione_input)
     filename = f"join_data_{safe_region}.csv"
@@ -150,6 +192,20 @@ def salva_join_data(df: pd.DataFrame, regione_input: str, output_dir: str = OUTP
 
 
 def get_join_data(regione_input: str) -> pd.DataFrame:
+    """
+    Restituisce il DataFrame joinato per la regione richiesta.
+    Se il file CSV già esiste, lo carica; altrimenti esegue l’estrazione e lo salva.
+
+    Parametri
+    ----------
+    regione_input : str
+        Nome della regione.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame finale con i dati joinati.
+    """
     safe_region = safe_name(regione_input)
     filename = f"join_data_{safe_region}.csv"
     path = os.path.join(OUTPUT_DIR, filename)
@@ -170,6 +226,26 @@ def refresh_join_data(
         get_variabili_censuarie=run_estrazione_variabili_censuarie,
         get_normattiva=run_estrazione_normattiva
 ) -> pd.DataFrame:
+    """
+    Ricalcola e sovrascrive i dati joinati per la regione specificata,
+    richiamando le funzioni di estrazione “fresh” dei dati sorgenti.
+
+    Parametri
+    ----------
+    regione_input : str
+        Nome della regione.
+    get_basi_territoriali : callable, opzionale
+        Funzione di estrazione aggiornata delle basi territoriali.
+    get_variabili_censuarie : callable, opzionale
+        Funzione di estrazione aggiornata delle variabili censuarie.
+    get_normattiva : callable, opzionale
+        Funzione di estrazione aggiornata dei dati Normattiva.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame finale joinato appena ricalcolato.
+    """
     logger.info("Ricalcolo join data per %s...", regione_input)
     df = estrai_join_data(
         regione_input,
@@ -179,11 +255,4 @@ def refresh_join_data(
     )
     salva_join_data(df, regione_input, output_dir=OUTPUT_DIR)
     return df
-
-
-if __name__ == "__main__":
-    regione = "campania"
-    # Abilita logging solo se eseguito standalone
-    configure_logging_if_main(__name__)
-    df_joined = get_join_data(regione)
 

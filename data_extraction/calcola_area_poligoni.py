@@ -6,17 +6,24 @@ logger = logging.getLogger(__name__)
 
 def calcola_area(gdf: gpd.GeoDataFrame, nome_colonna: str = "area") -> gpd.GeoDataFrame:
     """
-    Aggiunge una colonna con l'area in metri quadrati al GeoDataFrame dei fabbricati.
+    Calcola l'area di ciascun poligono nel GeoDataFrame e la aggiunge come nuova colonna.
 
-    Se il CRS non è in metri, viene stimata la zona UTM più adatta e applicata la trasformazione.
+    Se il CRS non è in metri, trasforma temporaneamente le geometrie nel sistema di riferimento UTM più adatto.
+    Dopo il calcolo, ripristina il CRS originale.
 
-    Parameters:
-        gdf (GeoDataFrame): GeoDataFrame contenente geometrie poligonali.
-        nome_colonna (str): Nome della colonna in cui salvare l'area (default "area").
+    Parametri
+    ----------
+    gdf : gpd.GeoDataFrame
+        Il GeoDataFrame contenente le geometrie dei poligoni.
+    nome_colonna : str, opzionale
+        Il nome della colonna in cui salvare le aree calcolate (default: "area").
 
-    Returns:
-        GeoDataFrame con colonna aggiuntiva contenente le aree in metri quadrati.
+    Restituisce
+    ----------
+    gpd.GeoDataFrame
+        Una copia del GeoDataFrame di input con una nuova colonna contenente l'area di ciascun poligono (in metri quadrati).
     """
+
     if not isinstance(gdf, gpd.GeoDataFrame):
         raise TypeError("Input non valido: deve essere un GeoDataFrame.")
 

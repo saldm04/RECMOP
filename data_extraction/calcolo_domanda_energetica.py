@@ -20,6 +20,28 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 def filtra_df_comune(df_join, comune, provincia):
+    """
+        Filtra il DataFrame joinato per il comune e la provincia specificati (in forma normalizzata).
+
+        Parametri
+        ----------
+        df_join : pd.DataFrame
+            DataFrame contenente almeno le colonne 'COMUNE' e 'PROVINCIA'.
+        comune : str
+            Nome normalizzato del comune da selezionare.
+        provincia : str
+            Nome normalizzato della provincia da selezionare.
+
+        Restituisce
+        ----------
+        pd.DataFrame
+            DataFrame filtrato sul solo comune richiesto.
+
+        Solleva
+        -------
+        ValueError
+            Se non sono presenti dati per la combinazione richiesta.
+        """
     df_join['_COMUNE_NORM'] = df_join['COMUNE'].astype(str).apply(safe_name)
     df_join['_PROVINCIA_NORM'] = df_join['PROVINCIA'].astype(str).apply(safe_name)
     df_comune = df_join[
@@ -32,6 +54,29 @@ def filtra_df_comune(df_join, comune, provincia):
     return df_comune
 
 def estrai_zona_climatica(df_comune, df_siape, comune):
+    """
+    Estrae la zona climatica unica del comune dal DataFrame e restituisce
+    anche il sottoinsieme dei dati SIAPE per quella zona.
+
+    Parametri
+    ----------
+    df_comune : pd.DataFrame
+        DataFrame filtrato per il comune.
+    df_siape : pd.DataFrame
+        DataFrame con i dati SIAPE per tutte le zone climatiche.
+    comune : str
+        Nome del comune.
+
+    Restituisce
+    ----------
+    tuple
+        (zona_climatica, df_siape_filtrato) per il comune.
+
+    Solleva
+    -------
+    ValueError
+        Se la zona climatica è ambigua o mancante, o se non ci sono dati SIAPE per la zona.
+    """
     zc = df_comune['ZONA_CLIMATICA'].dropna().unique()
     if len(zc) != 1:
         raise ValueError(f"Zona climatica ambigua o mancante per {comune}. Valori trovati: {zc}")
@@ -42,6 +87,21 @@ def estrai_zona_climatica(df_comune, df_siape, comune):
     return zc, df_zc
 
 def trova_range(valore, ranges):
+    """
+    Trova l'intervallo testuale in cui cade il valore, tra quelli forniti (formato: '<50', '50-100', '>5000').
+
+    Parametri
+    ----------
+    valore : float
+        Valore numerico da classificare.
+    ranges : list of str
+        Lista di intervalli testuali.
+
+    Restituisce
+    ----------
+    str or None
+        L'intervallo in cui cade il valore, oppure None se non trovato.
+    """
     for r in ranges:
         if r.startswith('<'):
             limite = float(r[1:])
@@ -58,6 +118,21 @@ def trova_range(valore, ranges):
     return None
 
 def join_fabbricati_sezione(provincia: str, gdf_fabbricati: gpd.GeoDataFrame) -> pd.DataFrame:
+    """
+    Associa ogni fabbricato del GeoDataFrame a una sezione censuaria tramite spatial join sui centroidi.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia dei fabbricati.
+    gdf_fabbricati : gpd.GeoDataFrame
+        GeoDataFrame con geometrie e colonna 'ID_FAB'.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con colonne 'ID_FAB' e 'SEZ2011' di appartenenza.
+    """
     # Ottieni regione dalla provincia
     regione = get_regione_from_provincia(safe_name(provincia))
     # Carica le sezioni censuarie
@@ -101,6 +176,28 @@ def calcola_coefficiente_domanda_zc_range(
     comune: str,
     provincia: str
 ) -> gpd.GeoDataFrame:
+    """
+    Calcola e assegna il coefficiente di domanda energetica (coeff_dom) per fabbricato,
+    secondo il modello SIAPE aggregato per zona climatica e periodo edilizio.
+
+    Parametri
+    ----------
+    gdf_fabbricati : gpd.GeoDataFrame
+        GeoDataFrame dei fabbricati.
+    df_join : pd.DataFrame
+        DataFrame joinato con info sezione e anagrafiche.
+    df_siape : pd.DataFrame
+        DataFrame SIAPE della zona climatica.
+    comune : str
+        Nome del comune.
+    provincia : str
+        Nome della provincia.
+
+    Restituisce
+    ----------
+    gpd.GeoDataFrame
+        GeoDataFrame con nuova colonna 'coeff_dom'.
+    """
     logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
 
     # Estrai le sezioni per ogni fabbricato
@@ -168,6 +265,28 @@ def calcola_coefficiente_domanda_zc_suris_volris(
     comune: str,
     provincia: str
 ) -> gpd.GeoDataFrame:
+    """
+    Calcola e assegna il coefficiente di domanda energetica per fabbricato,
+    secondo il modello SIAPE raggruppato per zona climatica, superficie e volume riscaldato.
+
+    Parametri
+    ----------
+    gdf_fabbricati : gpd.GeoDataFrame
+        GeoDataFrame dei fabbricati.
+    df_join : pd.DataFrame
+        DataFrame joinato con info sezione e anagrafiche.
+    df_siape : pd.DataFrame
+        DataFrame SIAPE della zona climatica.
+    comune : str
+        Nome del comune.
+    provincia : str
+        Nome della provincia.
+
+    Restituisce
+    ----------
+    gpd.GeoDataFrame
+        GeoDataFrame con nuova colonna 'coeff_dom'.
+    """
     logger.info(f"Calcolo coefficiente domanda per {comune} ({provincia})...")
 
     df_comune = filtra_df_comune(df_join, comune, provincia)
@@ -232,6 +351,28 @@ def calcola_coefficiente_domanda_zc_suris_volris_supdi(
     comune: str,
     provincia: str
 ) -> gpd.GeoDataFrame:
+    """
+    Calcola e assegna il coefficiente di domanda energetica per fabbricato,
+    secondo il modello SIAPE raggruppato per zona climatica, superficie riscaldata, volume riscaldato e superficie disperdente.
+
+    Parametri
+    ----------
+    gdf_fabbricati : gpd.GeoDataFrame
+        GeoDataFrame dei fabbricati.
+    df_join : pd.DataFrame
+        DataFrame joinato con info sezione e anagrafiche.
+    df_siape : pd.DataFrame
+        DataFrame SIAPE della zona climatica.
+    comune : str
+        Nome del comune.
+    provincia : str
+        Nome della provincia.
+
+    Restituisce
+    ----------
+    gpd.GeoDataFrame
+        GeoDataFrame con nuova colonna 'coeff_dom'.
+    """
     logger.info(f"Calcolo coefficiente domanda con supdi per {comune} ({provincia})...")
 
     df_comune = filtra_df_comune(df_join, comune, provincia)
@@ -318,8 +459,22 @@ def calcola_domanda_energetica(
     fabbricati_tipo: str
 ) -> gpd.GeoDataFrame:
     """
-    Calcola la domanda energetica in base alla tipologia fabbricati.
-    fabbricati_tipo: "zc_range", "zc_suris_volris", "zc_suris_volris_supdi"
+    Calcola la domanda energetica per tutti i fabbricati di un comune e provincia,
+    secondo la tipologia di aggregazione SIAPE specificata.
+
+    Parametri
+    ----------
+    comune : str
+        Nome del comune.
+    provincia : str
+        Nome della provincia.
+    fabbricati_tipo : str
+        Tipo di aggregazione SIAPE ("zc_range", "zc_suris_volris", "zc_suris_volris_supdi").
+
+    Restituisce
+    ----------
+    gpd.GeoDataFrame
+        GeoDataFrame dei fabbricati arricchito con le colonne 'coeff_dom' e 'domanda_en'.
     """
     logger.info(f"Inizio calcolo domanda energetica [{fabbricati_tipo}]...")
 
@@ -352,6 +507,26 @@ def _calcola_domanda_energetica_impl(
     siape_key: str,
     coeff_func,
 ) -> GeoDataFrame | None:
+    """
+    Implementazione interna per il calcolo della domanda energetica su tutti i fabbricati,
+    per comune e provincia, data la funzione di calcolo coefficiente e la chiave SIAPE.
+
+    Parametri
+    ----------
+    comune : str
+        Nome del comune.
+    provincia : str
+        Nome della provincia.
+    siape_key : str
+        Chiave SIAPE da usare per il caricamento dati.
+    coeff_func : callable
+        Funzione di calcolo del coefficiente da applicare ai fabbricati.
+
+    Restituisce
+    ----------
+    gpd.GeoDataFrame o None
+        GeoDataFrame dei fabbricati arricchito, o None in caso di errore.
+    """
     logger.info(f"Inizio calcolo domanda energetica...")
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -424,12 +599,3 @@ def _calcola_domanda_energetica_impl(
     logger.info(f"gpkg con domanda energetica salvato in {out_gpkg}")
 
     return gdf_fabbricati
-
-# =============================================================================
-# MAIN
-# =============================================================================
-
-if __name__ == '__main__':
-    configure_logging_if_main(__name__)
-    # Esempio: specifica qui il tipo desiderato
-    gdf = calcola_domanda_energetica("padula", "salerno", "zc_range")

@@ -21,7 +21,21 @@ COLONNE_RICHIESTE = [
 
 def estrai_dati_variabili_censuarie(percorso_file: str, sep: str = ';', encoding: str = 'latin-1') -> pd.DataFrame:
     """
-    Estrae le colonne censuarie da un file CSV Istat.
+    Estrae le colonne di interesse dai file CSV delle variabili censuarie Istat.
+
+    Parametri
+    ----------
+    percorso_file : str
+        Percorso al file CSV Istat da cui estrarre i dati.
+    sep : str, opzionale
+        Separatore di campo del CSV (default: ';').
+    encoding : str, opzionale
+        Codifica del file CSV (default: 'latin-1').
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame contenente solo le colonne richieste (quelle effettivamente presenti).
     """
     df = pd.read_csv(percorso_file, sep=sep, encoding=encoding, dtype=str)
     df.columns = df.columns.str.strip()
@@ -47,7 +61,22 @@ def estrai_dati_variabili_censuarie(percorso_file: str, sep: str = ';', encoding
 def salva_dati_variabili_censuarie(df: pd.DataFrame, cartella_output: str, nome_file: str,
                                     sep: str = ';', encoding: str = 'utf-8-sig') -> None:
     """
-    Salva un DataFrame in formato CSV.
+    Salva un DataFrame in formato CSV nella cartella specificata.
+
+    Se il file esiste già, viene sovrascritto.
+
+    Parametri
+    ----------
+    df : pd.DataFrame
+        Il DataFrame da salvare.
+    cartella_output : str
+        Directory di destinazione.
+    nome_file : str
+        Nome del file CSV di output.
+    sep : str, opzionale
+        Separatore di campo del CSV (default: ';').
+    encoding : str, opzionale
+        Codifica del file CSV (default: 'utf-8-sig').
     """
     os.makedirs(cartella_output, exist_ok=True)
     output_path = os.path.join(cartella_output, nome_file)
@@ -60,13 +89,17 @@ def salva_dati_variabili_censuarie(df: pd.DataFrame, cartella_output: str, nome_
 
 def run_estrazione_variabili_censuarie(regione: str) -> pd.DataFrame:
     """
-    Estrae e salva i dati censuari per una data regione.
+    Estrae le variabili censuarie per una regione da file CSV, le salva su disco e restituisce il DataFrame.
 
-    Args:
-        regione: Nome della regione (es. "campania").
+    Parametri
+    ----------
+    regione : str
+        Nome della regione (es. "campania").
 
-    Returns:
-        DataFrame estratto.
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con i dati censuari estratti e salvati.
     """
     regione_safe = safe_name(regione)
     input_path = os.path.join(BASE_INPUT_DIR, f"{regione_safe}.csv")
@@ -79,14 +112,17 @@ def run_estrazione_variabili_censuarie(regione: str) -> pd.DataFrame:
 
 def get_dati_variabili_censuarie(regione: str) -> pd.DataFrame:
     """
-    Restituisce il DataFrame dei dati censuari per la regione,
-    creandolo se non ancora presente.
+    Carica il DataFrame delle variabili censuarie per una regione da file CSV; se il file non esiste, avvia l’estrazione.
 
-    Args:
-        regione: Nome della regione (es. "campania").
+    Parametri
+    ----------
+    regione : str
+        Nome della regione (es. "campania").
 
-    Returns:
-        DataFrame con i dati censuari.
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame contenente i dati censuari della regione.
     """
     regione_safe = safe_name(regione)
     output_filename = f"variabili_censuarie_{regione_safe}.csv"
@@ -99,10 +135,3 @@ def get_dati_variabili_censuarie(regione: str) -> pd.DataFrame:
     df = pd.read_csv(path_csv, sep=';', encoding='utf-8-sig')
     logger.info(f"Dati caricati da: {path_csv}")
     return df
-
-
-if __name__ == "__main__":
-    # Esempio d’uso
-    # Abilita logging solo se eseguito standalone
-    configure_logging_if_main(__name__)
-    get_dati_variabili_censuarie("campania")

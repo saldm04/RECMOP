@@ -28,7 +28,16 @@ OUTPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Data_Collection", "c
 
 def estrai_dati_normattiva() -> pd.DataFrame:
     """
-    Estrae i dati climatici dal decreto su Normattiva usando Playwright e li restituisce come DataFrame.
+    Estrae i dati climatici dai testi degli articoli del decreto su Normattiva utilizzando Playwright e BeautifulSoup.
+
+    Naviga automaticamente sulle pagine degli articoli, filtra e pulisce i dati testuali
+    estratti, quindi costruisce e restituisce un DataFrame pandas con le colonne:
+    ["PROVINCIA", "ZONA_CLIMATICA", "GRADI_GIORNO", "ALTITUDINE", "COMUNE"].
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame contenente i dati climatici estratti dal decreto.
     """
     dati_finali = []
 
@@ -107,7 +116,23 @@ def estrai_dati_normattiva() -> pd.DataFrame:
 
 def salva_dati_normattiva(df: pd.DataFrame, output_dir: str = OUTPUT_DIR, nome_file: str = OUTPUT_FILENAME) -> pd.DataFrame:
     """
-    Salva i dati estratti da Normattiva in formato CSV.
+    Salva il DataFrame dei dati climatici Normattiva in formato CSV nella cartella di output.
+
+    Se il file esiste già, viene sovrascritto.
+
+    Parametri
+    ----------
+    df : pd.DataFrame
+        Il DataFrame da salvare.
+    output_dir : str, opzionale
+        Cartella di destinazione (default: OUTPUT_DIR).
+    nome_file : str, opzionale
+        Nome del file CSV (default: OUTPUT_FILENAME).
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        Il DataFrame fornito in input, per uso successivo a catena.
     """
     if df.empty:
         logger.warning("Nessun dato da scrivere.")
@@ -126,7 +151,12 @@ def salva_dati_normattiva(df: pd.DataFrame, output_dir: str = OUTPUT_DIR, nome_f
 
 def run_estrazione_normattiva() -> pd.DataFrame:
     """
-    Funzione principale per estrarre e salvare i dati da Normattiva.
+    Esegue il processo completo di estrazione e salvataggio dei dati climatici da Normattiva.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame con i dati estratti e salvati.
     """
     df = estrai_dati_normattiva()
     salva_dati_normattiva(df)
@@ -136,7 +166,13 @@ def run_estrazione_normattiva() -> pd.DataFrame:
 
 def get_dati_normattiva() -> pd.DataFrame:
     """
-    Ritorna il DataFrame dei dati Normattiva, estraendolo se il CSV non esiste.
+    Carica il DataFrame dei dati climatici estratti da Normattiva dal CSV salvato, oppure
+    esegue l’estrazione se il file non esiste.
+
+    Restituisce
+    ----------
+    pd.DataFrame
+        DataFrame contenente i dati climatici dei comuni.
     """
     path_csv = os.path.join(OUTPUT_DIR, OUTPUT_FILENAME)
 
@@ -147,9 +183,3 @@ def get_dati_normattiva() -> pd.DataFrame:
     df = pd.read_csv(path_csv, sep=";", encoding="utf-8-sig", keep_default_na=False)
     logger.info(f"Dati caricati da: {path_csv}")
     return df
-
-
-if __name__ == "__main__":
-    # Abilita logging solo se eseguito standalone
-    configure_logging_if_main(__name__)
-    get_dati_normattiva()
