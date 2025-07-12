@@ -87,6 +87,11 @@ def main():
         "irradianza_annua_napoli_pomigliano-d-arco_kwh.tif\n"
         "\n"
         "L'analisi verrà effettuata sull'intersezione tra i fabbricati e il DSM forniti.\n"
+        "Eventualmente, è possibile specificare all'interno di 'VINCOLI' una sottodirectory chiamata 'vincoli_provincia_comune'\n"
+        "con i file (.shp, .dbf, .cpg, .shx, .prj, ...) relativi ai vincoli del comune di interesse.\n"
+        "Il nome della directory deve usare solo lettere minuscole e trattini al posto di spazi o apostrofi.\n"
+        "I vincoli sono opzionali e possono essere utilizzati per limitare l'area di calcolo dell'offerta energetica\n"
+        "e per considerare eventuali restrizioni legate a vincoli urbanistici o paesaggistici.\n"
     )
 
     # Inserimento dati
