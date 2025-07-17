@@ -1,7 +1,8 @@
 from tabulate import tabulate
 from utils import get_pannelli, get_regione_from_provincia, safe_name, \
     normalize_dsm_input, \
-    get_file_modification_date, configure_logging_globale, normalize_fabbricati_input_auto, normalize_vincoli_input
+    get_file_modification_date, configure_logging_globale, normalize_fabbricati_input_auto, normalize_vincoli_input, \
+    inizializza_step_iterativo_peb_neb
 from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energetica, refresh_offerta_energetica
 from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica
 from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
@@ -14,6 +15,7 @@ import os
 import logging
 import sys
 import pandas as pd
+import geopandas as gpd
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +38,6 @@ def mostra_pannelli(df: pd.DataFrame) -> None:
 
     print("\nSeleziona il pannello che preferisci:\n")
     print(tabulate(df_vis, headers="keys", tablefmt="grid", showindex=True))
-
-import os
-import geopandas as gpd
 
 def report_interazione_outputs(provincia: str, comune: str):
     """
@@ -404,27 +403,7 @@ def main():
         ciclo_interazione_peb_neb(
             prov_safe, com_safe, percentuale_autosuff, distanza_max=distanza_max)
     else:
-        # Caso distanza iterativa: ciclo e chiedo input ogni volta
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        BASE_DIR = os.path.abspath(os.path.join(script_dir, "model_builder_shapefiles", f"{prov_safe}_{com_safe}"))
-        OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
-        input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{prov_safe}_{com_safe}.gpkg")
-        input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{prov_safe}_{com_safe}.gpkg")
-
-        gdf_peb_init = gpd.read_file(input_pos)
-        gdf_neb_init = gpd.read_file(input_neg)
-        ncer_layer_name = "ncer"
-
-        n_iter = 1
-        step_result = {
-            "input_pos": input_pos,
-            "input_neg": input_neg,
-            "prev_ncer": None,
-            "prev_ped2": gdf_peb_init,
-            "prev_ned2": gdf_neb_init,
-            "ncer_incrementale": None,
-            "n_iter": n_iter
-        }
+        step_result, OUTPUTS_DIR = inizializza_step_iterativo_peb_neb(prov_safe, com_safe)
         while True:
             # Chiedi la distanza max per questa iterazione
             while True:
@@ -455,7 +434,7 @@ def main():
                 prev_ned2=step_result['prev_ned2'],
                 ncer_incrementale=step_result['ncer_incrementale'],
                 outputs_dir_base=OUTPUTS_DIR,
-                ncer_layer_name=ncer_layer_name,
+                ncer_layer_name="ncer",
                 is_distanza_iterativa = True
             )
             if not step_result["continue"]:

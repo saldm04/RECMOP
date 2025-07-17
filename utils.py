@@ -506,3 +506,40 @@ def get_best_utm_epsg(gdf: gpd.GeoDataFrame) -> int:
         return 32600 + zone_number  # emisfero nord
     else:
         return 32700 + zone_number  # emisfero sud
+
+def inizializza_step_iterativo_peb_neb(provincia, comune):
+    """
+    Prepara e restituisce il dizionario step_result per la modalità iterativa dell'algoritmo PEB/NEB.
+    Restituisce anche i path utili, già normalizzati.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome normalizzato della provincia.
+    comune : str
+        Nome normalizzato del comune.
+
+    Restituisce
+    ----------
+    dict
+        Dizionario step_result inizializzato per la prima iterazione.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.abspath(os.path.join(script_dir, "model_builder_shapefiles", f"{provincia}_{comune}"))
+    outputs_dir = os.path.join(base_dir, "outputs")
+    input_neg = os.path.join(base_dir, "input", "neb", f"NEB_{provincia}_{comune}.gpkg")
+    input_pos = os.path.join(base_dir, "input", "peb", f"PEB_{provincia}_{comune}.gpkg")
+
+    gdf_peb_init = gpd.read_file(input_pos)
+    gdf_neb_init = gpd.read_file(input_neg)
+
+    step_result = {
+        "input_pos": input_pos,
+        "input_neg": input_neg,
+        "prev_ncer": None,
+        "prev_ped2": gdf_peb_init,
+        "prev_ned2": gdf_neb_init,
+        "ncer_incrementale": None,
+        "n_iter": 1
+    }
+    return step_result, outputs_dir
