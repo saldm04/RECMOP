@@ -6,7 +6,7 @@ from offerta.grass_gis.calcolo_offerta_energetica import calcolo_offerta_energet
 from data_extraction.calcolo_domanda_energetica import calcola_domanda_energetica
 from data_extraction.join_data_normattiva_varcens_basiterr import refresh_join_data
 from model_builder.creazione_peb_neb import crea_peb_neb
-from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb
+from model_builder.interazione_peb_neb import ciclo_interazione_peb_neb, step_interazione_peb_neb
 from data_extraction.siape import run_estrazione_siape
 from utils import load_dot_env
 
@@ -36,6 +36,89 @@ def mostra_pannelli(df: pd.DataFrame) -> None:
 
     print("\nSeleziona il pannello che preferisci:\n")
     print(tabulate(df_vis, headers="keys", tablefmt="grid", showindex=True))
+
+import os
+import geopandas as gpd
+
+def report_interazione_outputs(provincia: str, comune: str):
+    """
+    Stampa il numero di CER prodotti, PEB totali e NEB totali ad ogni iterazione,
+    e i totali finali per provincia e comune richiesti.
+    """
+    prov_safe = safe_name(provincia)
+    com_safe = safe_name(comune)
+    base_dir = os.path.join("model_builder_shapefiles", f"{prov_safe}_{com_safe}", "outputs")
+
+    iter_num = 1
+    output_exists = False
+
+    while True:
+        iter_dir = os.path.join(base_dir, f"output{iter_num}")
+        if not os.path.isdir(iter_dir):
+            break
+
+        ncer_path = os.path.join(iter_dir, f"ncer_{prov_safe}_{com_safe}_{iter_num}.gpkg")
+        peb_path = os.path.join(iter_dir, f"outpeb_{prov_safe}_{com_safe}_{iter_num}.gpkg")
+        neb_path = os.path.join(iter_dir, f"outneb_{prov_safe}_{com_safe}_{iter_num}.gpkg")
+
+        ncer_count = 0
+        peb_count = 0
+        neb_count = 0
+
+        if os.path.exists(ncer_path):
+            try:
+                ncer_count = len(gpd.read_file(ncer_path))
+            except Exception:
+                ncer_count = 0
+        if os.path.exists(peb_path):
+            try:
+                peb_count = len(gpd.read_file(peb_path))
+            except Exception:
+                peb_count = 0
+        if os.path.exists(neb_path):
+            try:
+                neb_count = len(gpd.read_file(neb_path))
+            except Exception:
+                neb_count = 0
+
+        print(f"Iterazione {iter_num}: CER prodotti: {ncer_count}, PEB totali: {peb_count}, NEB totali: {neb_count}")
+
+        output_exists = True
+        iter_num += 1
+
+    # Finali
+    ncer_final_path = os.path.join(base_dir, f"ncer_{prov_safe}_{com_safe}.gpkg")
+    peb_final_path = os.path.join(base_dir, f"output{iter_num-1}", f"outpeb_{prov_safe}_{com_safe}_{iter_num-1}.gpkg")
+    neb_final_path = os.path.join(base_dir, f"output{iter_num-1}", f"outneb_{prov_safe}_{com_safe}_{iter_num-1}.gpkg")
+
+    cer_tot = 0
+    peb_tot = 0
+    neb_tot = 0
+
+    if os.path.exists(ncer_final_path):
+        try:
+            # layer="ncer" è quello incrementale (default se non specificato)
+            cer_tot = len(gpd.read_file(ncer_final_path, layer="ncer"))
+        except Exception:
+            cer_tot = 0
+    if os.path.exists(peb_final_path):
+        try:
+            peb_tot = len(gpd.read_file(peb_final_path))
+        except Exception:
+            peb_tot = 0
+    if os.path.exists(neb_final_path):
+        try:
+            neb_tot = len(gpd.read_file(neb_final_path))
+        except Exception:
+            neb_tot = 0
+
+    print("\n=== Totali Finali ===")
+    print(f"Totale CER: {cer_tot}")
+    print(f"Totale PEB: {peb_tot}")
+    print(f"Totale NEB: {neb_tot}")
+
+    if not output_exists:
+        print("Nessun output trovato. Tutti i valori sono 0.")
 
 def main():
     # === CONFIGURAZIONE LOGGING ===
@@ -158,10 +241,27 @@ def main():
             else:
                 print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
 
+    while True:
+        coeff_moltiplicativo = input(
+            "Specifica il coefficiente moltiplicativo per la domanda energetica\n"
+            "(inserisci 1 o premi invio per lasciare invariato): "
+        ).strip()
+        if coeff_moltiplicativo == "":
+            coeff_moltiplicativo = 1.0
+            break
+        try:
+            coeff_moltiplicativo = float(coeff_moltiplicativo)
+            if coeff_moltiplicativo <= 0:
+                print("Il valore deve essere maggiore di zero.")
+                continue
+            break
+        except ValueError:
+            print("Valore non valido. Inserisci un numero valido (usa il punto per i decimali).")
+
     # Calcolo domanda energetica
     print("Calcolo della domanda energetica in corso...")
     try:
-        calcola_domanda_energetica(com_safe, prov_safe, fabbricati_tipo)
+        calcola_domanda_energetica(com_safe, prov_safe, fabbricati_tipo, coeff_moltiplicativo)
         print("Domanda energetica calcolata con successo.")
     except Exception as e:
         print(f"Errore durante il calcolo della domanda energetica: {e}")
@@ -262,10 +362,11 @@ def main():
         if risposta == "SI":
             # Seconda domanda: fissa o diversa a ogni iterazione
             while True:
-                risposta_tipo = input("Vuoi inserire una distanza massima fissa per tutte le iterazioni, "
-                                      "o vuoi specificarla ad ogni iterazione? (SI -> fissa / NO -> iterazione): ").strip().upper()
+                risposta_tipo = input(
+                    "Vuoi inserire una distanza massima fissa per tutte le iterazioni, "
+                    "o vuoi specificarla ad ogni iterazione? (SI -> fissa / NO -> iterazione): ").strip().upper()
                 if risposta_tipo == "SI":
-                    # Chiedo la distanza fissa una volta
+                    # Distanza fissa per tutte le iterazioni
                     while True:
                         distanza_input = input("Inserisci la distanza massima (in metri): ").strip()
                         try:
@@ -292,14 +393,76 @@ def main():
         else:
             print("Risposta non valida. Scrivi 'SI' oppure 'NO'.")
 
-    # Chiedi provincia/comune come al solito, poi...
     print("Creazione PEB/NEB in corso...")
     num_peb, num_neb = crea_peb_neb(prov_safe, com_safe)
     print(f"PEB creati: {num_peb}, NEB creati: {num_neb}")
+
     print("Interazione PEB/NEB in corso...")
-    ciclo_interazione_peb_neb(prov_safe, com_safe, percentuale_autosuff,
-                              distanza_iterativa=distanza_iterativa,
-                              distanza_max=distanza_max)
+
+    if not distanza_iterativa:
+        # Caso distanza max fissa o nessun limite: uso la funzione batch
+        ciclo_interazione_peb_neb(
+            prov_safe, com_safe, percentuale_autosuff, distanza_max=distanza_max)
+    else:
+        # Caso distanza iterativa: ciclo e chiedo input ogni volta
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        BASE_DIR = os.path.abspath(os.path.join(script_dir, "model_builder_shapefiles", f"{prov_safe}_{com_safe}"))
+        OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+        input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{prov_safe}_{com_safe}.gpkg")
+        input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{prov_safe}_{com_safe}.gpkg")
+
+        gdf_peb_init = gpd.read_file(input_pos)
+        gdf_neb_init = gpd.read_file(input_neg)
+        ncer_layer_name = "ncer"
+
+        n_iter = 1
+        step_result = {
+            "input_pos": input_pos,
+            "input_neg": input_neg,
+            "prev_ncer": None,
+            "prev_ped2": gdf_peb_init,
+            "prev_ned2": gdf_neb_init,
+            "ncer_incrementale": None,
+            "n_iter": n_iter
+        }
+        while True:
+            # Chiedi la distanza max per questa iterazione
+            while True:
+                distanza_input = input(
+                    f"[Iterazione {step_result['n_iter']}] Inserisci la distanza massima in metri (invio per nessun limite): ").strip()
+                if distanza_input == "":
+                    distanza_max_iter = None
+                    break
+                try:
+                    distanza_max_iter = float(distanza_input)
+                    if distanza_max_iter > 0:
+                        break
+                    else:
+                        print("La distanza deve essere maggiore di zero.")
+                except ValueError:
+                    print("Valore non valido. Inserisci un numero o lascia vuoto per nessun limite.")
+
+            step_result = step_interazione_peb_neb(
+                provincia=prov_safe,
+                comune=com_safe,
+                percentuale_autosuff=percentuale_autosuff,
+                distanza_max=distanza_max_iter,
+                n_iter=step_result['n_iter'],
+                input_pos=step_result['input_pos'],
+                input_neg=step_result['input_neg'],
+                prev_ncer=step_result['prev_ncer'],
+                prev_ped2=step_result['prev_ped2'],
+                prev_ned2=step_result['prev_ned2'],
+                ncer_incrementale=step_result['ncer_incrementale'],
+                outputs_dir_base=OUTPUTS_DIR,
+                ncer_layer_name=ncer_layer_name,
+                is_distanza_iterativa = True
+            )
+            if not step_result["continue"]:
+                break
+
+    print("Interazione PEB/NEB completata.")
+    report_interazione_outputs(prov_safe, com_safe)
     print("Analisi completata con successo. I risultati sono disponibili nella cartella "
           "'Data_Collection' e 'model_builder_shapefiles'.")
 

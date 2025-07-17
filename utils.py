@@ -437,7 +437,7 @@ def get_file_modification_date(file_path: str) -> str:
         Data e ora dell'ultima modifica, oppure 'File non trovato' se il file non esiste.
     """
     if os.path.isfile(file_path):
-        print(f"Controllo ultima modifica per: {file_path}")
+        logger.info(f"Controllo ultima modifica per: {file_path}")
         timestamp = os.path.getmtime(file_path)
         return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
     else:

@@ -456,11 +456,13 @@ def calcola_coefficiente_domanda_zc_suris_volris_supdi(
 def calcola_domanda_energetica(
     comune: str,
     provincia: str,
-    fabbricati_tipo: str
+    fabbricati_tipo: str,
+    coeff_moltiplicativo = 1.0
 ) -> gpd.GeoDataFrame:
     """
     Calcola la domanda energetica per tutti i fabbricati di un comune e provincia,
-    secondo la tipologia di aggregazione SIAPE specificata.
+    secondo la tipologia di aggregazione SIAPE specificata, e applica un coefficiente
+    moltiplicativo finale alla domanda calcolata.
 
     Parametri
     ----------
@@ -469,12 +471,20 @@ def calcola_domanda_energetica(
     provincia : str
         Nome della provincia.
     fabbricati_tipo : str
-        Tipo di aggregazione SIAPE ("zc_range", "zc_suris_volris", "zc_suris_volris_supdi").
+        Tipo di aggregazione SIAPE da utilizzare. Può essere uno tra:
+        - "zc_range": solo età edifici e zona climatica
+        - "zc_suris_volris": superficie e volume riscaldato
+        - "zc_suris_volris_supdi": superficie e volume riscaldato + superficie disperdente
+    coeff_moltiplicativo : float, opzionale
+        Fattore moltiplicativo da applicare alla domanda energetica finale
+        (default: 1.0, nessuna variazione).
 
     Restituisce
     ----------
     gpd.GeoDataFrame
-        GeoDataFrame dei fabbricati arricchito con le colonne 'coeff_dom' e 'domanda_en'.
+        GeoDataFrame dei fabbricati arricchito con:
+        - 'coeff_dom': coefficiente di domanda energetica
+        - 'domanda_en': domanda energetica in kWh/anno, già moltiplicata per il coefficiente specificato
     """
     logger.info(f"Inizio calcolo domanda energetica [{fabbricati_tipo}]...")
 
@@ -495,7 +505,7 @@ def calcola_domanda_energetica(
     coeff_func = _COEFF_FUNCS[fabbricati_tipo]
     siape_key = _SIAPE_KEYS[fabbricati_tipo]
 
-    return _calcola_domanda_energetica_impl(comune, provincia, siape_key, coeff_func)
+    return _calcola_domanda_energetica_impl(comune, provincia, siape_key, coeff_func, coeff_moltiplicativo)
 
 # =============================================================================
 # IMPLEMENTAZIONE PRIVATA, LOGICA INVARIATA
@@ -506,10 +516,13 @@ def _calcola_domanda_energetica_impl(
     provincia: str,
     siape_key: str,
     coeff_func,
+    coeff_moltiplicativo = 1.0
 ) -> GeoDataFrame | None:
     """
-    Implementazione interna per il calcolo della domanda energetica su tutti i fabbricati,
-    per comune e provincia, data la funzione di calcolo coefficiente e la chiave SIAPE.
+    Implementazione interna per il calcolo della domanda energetica su tutti i fabbricati
+    di un comune e provincia. Applica la funzione di calcolo del coefficiente energetico
+    in base al tipo di aggregazione SIAPE, e infine applica un coefficiente moltiplicativo
+    alla domanda.
 
     Parametri
     ----------
@@ -518,14 +531,18 @@ def _calcola_domanda_energetica_impl(
     provincia : str
         Nome della provincia.
     siape_key : str
-        Chiave SIAPE da usare per il caricamento dati.
+        Chiave per il caricamento dei dati SIAPE ("zc_range", "zc_suris_volris", ecc.).
     coeff_func : callable
-        Funzione di calcolo del coefficiente da applicare ai fabbricati.
+        Funzione di calcolo del coefficiente energetico specifica per il tipo di fabbricato.
+    coeff_moltiplicativo : float, opzionale
+        Fattore moltiplicativo da applicare alla domanda energetica finale
+        (default: 1.0).
 
     Restituisce
     ----------
     gpd.GeoDataFrame o None
-        GeoDataFrame dei fabbricati arricchito, o None in caso di errore.
+        GeoDataFrame dei fabbricati arricchito con la domanda energetica,
+        oppure None in caso di errore nel caricamento dei dati.
     """
     logger.info(f"Inizio calcolo domanda energetica...")
 
@@ -592,6 +609,8 @@ def _calcola_domanda_energetica_impl(
     if 'delta_UHI' in gdf_fabbricati.columns:
         logger.info("Colonna 'delta_UHI' trovata: aggiunta alla domanda energetica.")
         gdf_fabbricati['domanda_en'] += gdf_fabbricati['delta_UHI']
+
+    gdf_fabbricati['domanda_en'] *= coeff_moltiplicativo
 
     gdf_fabbricati = get_dati_catasto(gdf_fabbricati, prov_safe, comm_safe)
     gdf_fabbricati.to_file(out_gpkg, driver='GPKG')

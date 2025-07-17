@@ -12,7 +12,7 @@ import pandas as pd
 from pvlib.clearsky import lookup_linke_turbidity
 from rasterstats import zonal_stats
 from data_extraction.calcola_area_poligoni import calcola_area
-from utils import safe_name, configure_logging_if_main, load_dot_env, raster_is_empty
+from utils import safe_name, load_dot_env, raster_is_empty
 
 # CONFIGURAZIONE LOG
 logger = logging.getLogger(__name__)
@@ -263,14 +263,14 @@ def resample_dsm_to_1x1(src_path, out_path):
         res_x, res_y = src.res  # tuple (xres, yres)
         if max(res_x, res_y) <= 2:
             # No resampling needed
-            print(f"Nessun resampling: il DSM '{os.path.basename(src_path)}' ha risoluzione {res_x}x{res_y} m <= 2 m.")
+            logger.info(f"Nessun resampling: il DSM '{os.path.basename(src_path)}' ha risoluzione {res_x}x{res_y} m <= 2 m.")
             return src_path  # return original DSM path
         # Calculate new shape
         scale_x = res_x / 1.0
         scale_y = res_y / 1.0
         new_width = int(src.width * scale_x)
         new_height = int(src.height * scale_y)
-        print(f"Attenzione: il DSM '{os.path.basename(src_path)}' ha risoluzione {res_x}x{res_y} m: lo risampio a 1x1 m...")
+        logger.info(f"Attenzione: il DSM '{os.path.basename(src_path)}' ha risoluzione {res_x}x{res_y} m: lo risampio a 1x1 m...")
         # Prepare destination dataset
         kwargs = src.meta.copy()
         kwargs.update({

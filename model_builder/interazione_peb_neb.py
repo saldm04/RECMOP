@@ -7,7 +7,7 @@ import pandas as pd
 import geopandas as gpd
 from sklearn.neighbors import NearestNeighbors
 import shutil
-from utils import safe_name, configure_logging_if_main, get_best_utm_epsg
+from utils import safe_name, get_best_utm_epsg
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -374,40 +374,228 @@ def save_if_not_empty(gdf: gpd.GeoDataFrame, path: str, driver: str = 'GPKG', **
         if os.path.exists(path):
             os.remove(path)
 
-def ciclo_interazione_peb_neb(
-        provincia: str,
-        comune: str,
-        percentuale_autosuff=55,
-        distanza_iterativa=False,
-        distanza_max=None
-    ) -> None:
+def step_interazione_peb_neb(
+    provincia: str,
+    comune: str,
+    percentuale_autosuff=55,
+    distanza_max=None,
+    n_iter=1,
+    input_pos=None,
+    input_neg=None,
+    prev_ncer=None,
+    prev_ped2=None,
+    prev_ned2=None,
+    ncer_incrementale=None,
+    outputs_dir_base=None,
+    ncer_layer_name="ncer",
+    is_distanza_iterativa = False
+):
     """
-    Esegue il ciclo iterativo di interazione tra edifici PEB e NEB per generare le comunità energetiche (CER),
-    gestendo output incrementali e condizioni di arresto. Implementa la logica QGIS "INTERAZIONE PEB-NEB"
-    con supporto per autosufficienza variabile e soglia di distanza opzionale.
+    Esegue una singola iterazione dell'algoritmo di aggregazione PEB/NEB per la formazione delle Comunità Energetiche Rinnovabili (CER).
+
+    L'algoritmo associa fabbricati con surplus energetico (PEB) e deficit (NEB) sulla base della soglia di autosufficienza e della distanza massima specificata, aggiornando i file di output e lo stato necessario per l'iterazione successiva.
 
     Parametri
     ----------
     provincia : str
-        Nome della provincia (anche con caratteri speciali, sarà normalizzato).
+        Nome della provincia.
     comune : str
-        Nome del comune (anche con caratteri speciali, sarà normalizzato).
+        Nome del comune.
     percentuale_autosuff : float, opzionale
-        Soglia minima di autosufficienza (in percentuale) per aggregare edifici nella stessa comunità (default: 55).
-    distanza_iterativa : bool, opzionale
-        Se True, la distanza massima tra edifici viene richiesta ad ogni iterazione (modalità interattiva).
+        Soglia di autosufficienza richiesta per l’aggregazione (default: 55).
     distanza_max : float, opzionale
-        Distanza massima (in metri) per accoppiare edifici PEB-NEB (se None, nessun limite).
+        Distanza massima (in metri) per associare edifici (default: None).
+    n_iter : int, opzionale
+        Numero dell’iterazione corrente (default: 1).
+    input_pos : str, opzionale
+        Percorso al file PEB di input (default: auto).
+    input_neg : str, opzionale
+        Percorso al file NEB di input (default: auto).
+    prev_ncer : GeoDataFrame, opzionale
+        Stato precedente del DataFrame delle CER (default: None).
+    prev_ped2 : GeoDataFrame, opzionale
+        Stato precedente dei fabbricati PEB (default: None).
+    prev_ned2 : GeoDataFrame, opzionale
+        Stato precedente dei fabbricati NEB (default: None).
+    ncer_incrementale : GeoDataFrame, opzionale
+        DataFrame incrementale delle CER (default: None).
+    outputs_dir_base : str, opzionale
+        Directory base per l’output (default: auto).
+    ncer_layer_name : str, opzionale
+        Nome del layer per il salvataggio NCER (default: "ncer").
+    is_distanza_iterativa : bool, opzionale
+        Indica se la distanza viene inserita ad ogni iterazione (default: False).
 
-    Returns
-    -------
-    None
+    Restituisce
+    ----------
+    dict
+        Dizionario con:
+            - "continue": bool, True se deve continuare il ciclo iterativo.
+            - "input_pos": percorso al nuovo input PEB.
+            - "input_neg": percorso al nuovo input NEB.
+            - "prev_ncer": stato aggiornato NCER.
+            - "prev_ped2": stato aggiornato PEB.
+            - "prev_ned2": stato aggiornato NEB.
+            - "ncer_incrementale": DataFrame incrementale CER.
+            - "n_iter": numero dell’iterazione successiva.
 
     Note
-    -----
-    - Crea output multipli in cartelle strutturate per ogni iterazione.
-    - Stampa i totali finali di CER, PEB, NEB e salva i risultati intermedi e incrementali.
-    - Se uno degli input iniziali è vuoto, il ciclo si interrompe anticipatamente.
+    ----
+    Salva i risultati di ogni iterazione nelle apposite directory. Il ciclo termina se non ci sono più edifici aggregabili (output vuoti o nessun cambiamento rispetto all’iterazione precedente).
+    """
+
+    prov_norm = safe_name(provincia)
+    com_norm = safe_name(comune)
+
+    logger.info(
+        f"[step_interazione_peb_neb] Iterazione {n_iter} - provincia: {prov_norm}, comune: {com_norm}, distanza_max: {distanza_max}")
+
+    # Se non passati, costruisci path di default
+    if outputs_dir_base is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        outputs_dir_base = os.path.abspath(
+            os.path.join(script_dir, "..", "model_builder_shapefiles", f"{prov_norm}_{com_norm}", "outputs")
+        )
+    output_dir = os.path.join(outputs_dir_base, f"output{n_iter}")
+    os.makedirs(output_dir, exist_ok=True)
+
+    ncer_path = os.path.join(outputs_dir_base, f"ncer_{prov_norm}_{com_norm}.gpkg")
+    output_ncer = os.path.join(output_dir, f"ncer_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+    output_ned2 = os.path.join(output_dir, f"outneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+    output_ped2 = os.path.join(output_dir, f"outpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+
+    # Carica input iniziali se non forniti
+    if n_iter == 1:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.abspath(
+            os.path.join(script_dir, "..", "model_builder_shapefiles", f"{prov_norm}_{com_norm}"))
+        input_neg = input_neg or os.path.join(base_dir, "input", "neb", f"NEB_{prov_norm}_{com_norm}.gpkg")
+        input_pos = input_pos or os.path.join(base_dir, "input", "peb", f"PEB_{prov_norm}_{com_norm}.gpkg")
+        prev_ped2 = gpd.read_file(input_pos)
+        prev_ned2 = gpd.read_file(input_neg)
+        prev_ncer = None
+        logger.info(f"[step_interazione_peb_neb] Caricati input iniziali: {input_pos}, {input_neg}")
+
+    processor = InterazionePebNeb()
+    logger.info(
+        f"[step_interazione_peb_neb] Avvio process_algorithm con autosufficienza={percentuale_autosuff}, distanza_max={distanza_max}")
+    results = processor.process_algorithm(
+        input_positivo_path=os.path.abspath(input_pos),
+        input_negativo_path=os.path.abspath(input_neg),
+        percentuale_autosuff=percentuale_autosuff,
+        distanza_max=distanza_max
+    )
+
+    ncer = results['NCER'].copy()
+    ped2_gdf = results['PED2']
+    ned2_gdf = results['NED2']
+
+    ncer['iterazione'] = n_iter
+
+    # Funzione per verificare cambiamento tra due DataFrame
+    def changed(df, prev_df):
+        if (prev_df is None or prev_df.empty) and (df is None or df.empty):
+            return False
+        return not df.equals(prev_df)
+
+    ncer_changed = changed(ncer, prev_ncer)
+    ped2_changed = changed(ped2_gdf, prev_ped2)
+    ned2_changed = changed(ned2_gdf, prev_ned2)
+
+    # Condizione di terminazione: output vuoto
+    should_stop = False
+    if ped2_gdf.empty or ned2_gdf.empty:
+        logger.info(
+            f"[step_interazione_peb_neb] Iterazione {n_iter}: almeno uno tra PEB o NEB è vuoto. Termino il ciclo.")
+        if not ped2_gdf.empty:
+            save_if_not_empty(ped2_gdf, output_ped2)
+            logger.info(f"[step_interazione_peb_neb] Salvato PEB output ({len(ped2_gdf)} feature): {output_ped2}")
+        if not ned2_gdf.empty:
+            save_if_not_empty(ned2_gdf, output_ned2)
+            logger.info(f"[step_interazione_peb_neb] Salvato NEB output ({len(ned2_gdf)} feature): {output_ned2}")
+        should_stop = True
+
+    # Logica per distanza fissa: tutto invariato rispetto all'iterazione precedente
+    if not should_stop and not ncer_changed and not ped2_changed and not ned2_changed and not is_distanza_iterativa:
+        logger.info(
+            f"[step_interazione_peb_neb] Iterazione {n_iter}: nessun cambiamento rispetto alla precedente. Stop ciclo e pulizia output iterazione corrente.")
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        n_iter -= 1
+        output_dir = os.path.join(outputs_dir_base, f"output{n_iter}")
+        output_ned2 = os.path.join(output_dir, f"outneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+        output_ped2 = os.path.join(output_dir, f"outpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
+        should_stop = True
+
+    # Salvataggi output
+    if not should_stop:
+        if not ped2_gdf.empty and (is_distanza_iterativa or ped2_changed or ncer_changed):
+            save_if_not_empty(ped2_gdf, output_ped2)
+            logger.info(f"[step_interazione_peb_neb] Salvato PEB output ({len(ped2_gdf)} feature): {output_ped2}")
+        if not ned2_gdf.empty and (is_distanza_iterativa or ned2_changed or ncer_changed):
+            save_if_not_empty(ned2_gdf, output_ned2)
+            logger.info(f"[step_interazione_peb_neb] Salvato NEB output ({len(ned2_gdf)} feature): {output_ned2}")
+
+    # NCER logica incrementale
+    if not ncer.empty and ncer_changed:
+        if ncer_incrementale is None:
+            ncer_incrementale = ncer.copy()
+        else:
+            ncer_incrementale = pd.concat([ncer_incrementale, ncer], ignore_index=True)
+        save_if_not_empty(ncer_incrementale, ncer_path, layer=ncer_layer_name)
+        save_if_not_empty(ncer, output_ncer)
+        logger.info(
+            f"[step_interazione_peb_neb] Salvato NCER incrementale e NCER iterazione: {ncer_path}, {output_ncer}")
+
+    # Prepara input per prossima iterazione
+    new_input_pos = output_ped2
+    new_input_neg = output_ned2
+    new_prev_ncer = ncer.copy() if not ncer.empty else None
+    new_prev_ped2 = ped2_gdf.copy() if not ped2_gdf.empty else None
+    new_prev_ned2 = ned2_gdf.copy() if not ned2_gdf.empty else None
+
+    logger.info(f"[step_interazione_peb_neb] Fine iterazione {n_iter}. Stato: should_stop={should_stop}")
+
+    return {
+        "continue": not should_stop,
+        "input_pos": new_input_pos,
+        "input_neg": new_input_neg,
+        "prev_ncer": new_prev_ncer,
+        "prev_ped2": new_prev_ped2,
+        "prev_ned2": new_prev_ned2,
+        "ncer_incrementale": ncer_incrementale,
+        "n_iter": n_iter + 1
+    }
+
+def ciclo_interazione_peb_neb(
+        provincia: str,
+        comune: str,
+        percentuale_autosuff=55,
+        distanza_max=None
+    ) -> None:
+    """
+    Gestisce il ciclo completo di aggregazione iterativa tra edifici PEB (Positive Energy Building) e NEB (Negative Energy Building) per la formazione delle CER, ripetendo l’algoritmo fino al raggiungimento di una condizione di arresto.
+
+    Il ciclo richiama `step_interazione_peb_neb` per ciascuna iterazione, aggiorna i file di output e interrompe il processo quando non è più possibile formare nuove aggregazioni.
+
+    Parametri
+    ----------
+    provincia : str
+        Nome della provincia.
+    comune : str
+        Nome del comune.
+    percentuale_autosuff : float, opzionale
+        Soglia di autosufficienza richiesta per l’aggregazione (default: 55).
+    distanza_max : float, opzionale
+        Distanza massima (in metri) per associare edifici (default: None).
+
+    Restituisce
+    ----------
+    None
+
+    Effetti
+    -------
+    Salva su disco le aggregazioni (CER) generate ad ogni iterazione nella struttura di output prevista dal progetto. Registra i log del processo. Il ciclo si interrompe quando uno tra PEB o NEB in input risulta vuoto o non vi sono variazioni rispetto all’iterazione precedente.
     """
     prov_norm = safe_name(provincia)
     com_norm = safe_name(comune)
@@ -421,7 +609,6 @@ def ciclo_interazione_peb_neb(
     input_neg = os.path.join(BASE_DIR, "input", "neb", f"NEB_{prov_norm}_{com_norm}.gpkg")
     input_pos = os.path.join(BASE_DIR, "input", "peb", f"PEB_{prov_norm}_{com_norm}.gpkg")
 
-    n_iter = 1
     ncer_path = os.path.join(OUTPUTS_DIR, f"ncer_{prov_norm}_{com_norm}.gpkg")
     ncer_layer_name = "ncer"
 
@@ -435,21 +622,9 @@ def ciclo_interazione_peb_neb(
         except Exception as e:
             logger.warning(f"Impossibile eliminare la cartella {OUTPUTS_DIR}: {e}")
 
-    # Funzione per verificare cambiamento tra due DataFrame
-    def changed(df, prev_df):
-        if (prev_df is None or prev_df.empty) and (df is None or df.empty):
-            return False
-        return not df.equals(prev_df)
-
-    ncer_incrementale = None
-
     # Caricamento input per controllo "early stop"
     gdf_peb_init = gpd.read_file(input_pos)
     gdf_neb_init = gpd.read_file(input_neg)
-
-    prev_ncer = None
-    prev_ped2 = gdf_peb_init
-    prev_ned2 = gdf_neb_init
 
     if gdf_peb_init.empty or gdf_neb_init.empty:
         logger.info(
@@ -463,140 +638,50 @@ def ciclo_interazione_peb_neb(
         # Salva solo quello NON vuoto
         if not gdf_peb_init.empty:
             save_if_not_empty(gdf_peb_init, output_ped2)
-            print(f"Creato solo PEB output ({len(gdf_peb_init)} elementi)")
+            logger.info(f"Creato solo PEB output ({len(gdf_peb_init)} elementi)")
         if not gdf_neb_init.empty:
             save_if_not_empty(gdf_neb_init, output_ned2)
-            print(f"Creato solo NEB output ({len(gdf_neb_init)} elementi)")
+            logger.info(f"Creato solo NEB output ({len(gdf_neb_init)} elementi)")
 
-        print("\n=== Totali Finali ===")
-        print(f"Totale CER: 0")
-        print(f"Totale PEB: {len(gdf_peb_init)}")
-        print(f"Totale NEB: {len(gdf_neb_init)}")
         logger.info("Analisi interrotta: uno degli input era vuoto.")
         return
 
+    # Stato iniziale per step_interazione_peb_neb
+    n_iter = 1
+    step_result = {
+        "input_pos": input_pos,
+        "input_neg": input_neg,
+        "prev_ncer": None,
+        "prev_ped2": gdf_peb_init,
+        "prev_ned2": gdf_neb_init,
+        "ncer_incrementale": None,
+        "n_iter": n_iter
+    }
+
     while True:
-        print(f"\n=== ITERAZIONE {n_iter} ===")
-        output_dir = os.path.join(OUTPUTS_DIR, f"output{n_iter}")
-        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"\n=== ITERAZIONE {step_result['n_iter']} ===")
+        # Nessuna distanza iterativa, uso sempre quella passata
+        distanza_max_iter = distanza_max
 
-        output_ncer = os.path.join(output_dir, f"ncer_{prov_norm}_{com_norm}_{n_iter}.gpkg")
-        output_ned2 = os.path.join(output_dir, f"outneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
-        output_ped2 = os.path.join(output_dir, f"outpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
-
-        if distanza_iterativa:
-            while True:
-                user_input = input(
-                    f"[Iterazione {n_iter}] Inserisci la distanza massima in metri (premi invio per nessun limite): ").strip()
-                if user_input == "":
-                    distanza_max_iter = None
-                    break
-                try:
-                    distanza_max_iter = float(user_input)
-                    if distanza_max_iter > 0:
-                        break
-                    else:
-                        print("La distanza deve essere maggiore di zero o lascia vuoto per nessun limite.")
-                except ValueError:
-                    print("Valore non valido. Inserisci un numero o lascia vuoto per nessun limite.")
-        else:
-            distanza_max_iter = distanza_max
-
-        processor = InterazionePebNeb()
-        results = processor.process_algorithm(
-            input_positivo_path=os.path.abspath(input_pos),
-            input_negativo_path=os.path.abspath(input_neg),
+        # Esegui una iterazione tramite la funzione step_interazione_peb_neb
+        step_result = step_interazione_peb_neb(
+            provincia=provincia,
+            comune=comune,
             percentuale_autosuff=percentuale_autosuff,
-            distanza_max=distanza_max_iter
+            distanza_max=distanza_max_iter,
+            n_iter=step_result['n_iter'],
+            input_pos=step_result['input_pos'],
+            input_neg=step_result['input_neg'],
+            prev_ncer=step_result['prev_ncer'],
+            prev_ped2=step_result['prev_ped2'],
+            prev_ned2=step_result['prev_ned2'],
+            ncer_incrementale=step_result['ncer_incrementale'],
+            outputs_dir_base=OUTPUTS_DIR,
+            ncer_layer_name=ncer_layer_name,
+            is_distanza_iterativa=False  # Non usiamo distanza iterativa in questo ciclo
         )
 
-        ncer = results['NCER'].copy()
-        ped2_gdf = results['PED2']
-        ned2_gdf = results['NED2']
-
-        ncer['iterazione'] = n_iter
-
-        ncer_changed = changed(ncer, prev_ncer)
-        ped2_changed = changed(ped2_gdf, prev_ped2)
-        ned2_changed = changed(ned2_gdf, prev_ned2)
-
-        # Condizione di terminazione: output vuoto
-        if ped2_gdf.empty or ned2_gdf.empty:
-            logger.info(f"Iterazione {n_iter}: condizione di terminazione raggiunta (uno degli output è vuoto).")
-            if not ped2_gdf.empty:
-                save_if_not_empty(ped2_gdf, output_ped2)
-                logger.info(f"Creato PEB output (feature: {len(ped2_gdf)})")
-            if not ned2_gdf.empty:
-                save_if_not_empty(ned2_gdf, output_ned2)
-                logger.info(f"Creato NEB output (feature: {len(ned2_gdf)})")
+        if not step_result["continue"]:
             break
-
-        # --- LOGICA SPECIFICA PER DISTANZA ITERATIVA O NO ---
-        if not distanza_iterativa:
-            # SOLO SE modalità NON iterativa, stoppa se tutto identico
-            if not (ncer_changed or ped2_changed or ned2_changed):
-                print(
-                    f"[Iterazione {n_iter}] Risultati identici alla precedente iterazione. Iterazione non contata, ciclo interrotto.")
-                logger.warning("Tutti i risultati identici. Termine ciclo.")
-                if os.path.exists(output_dir):
-                    shutil.rmtree(output_dir)
-                    logger.info(f"Cartella {output_dir} eliminata poiché non sono stati prodotti cambiamenti.")
-                n_iter -= 1
-                output_dir = os.path.join(OUTPUTS_DIR, f"output{n_iter}")
-                output_ned2 = os.path.join(output_dir, f"outneb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
-                output_ped2 = os.path.join(output_dir, f"outpeb_{prov_norm}_{com_norm}_{n_iter}.gpkg")
-                break
-            # Se cambia, salva secondo la logica già vista
-            if not ped2_gdf.empty and (ped2_changed or ncer_changed):
-                save_if_not_empty(ped2_gdf, output_ped2)
-            if not ned2_gdf.empty and (ned2_changed or ncer_changed):
-                save_if_not_empty(ned2_gdf, output_ned2)
-        else:
-            # Se modalità iterattiva, salva SEMPRE outpeb/outneb se non vuoti,
-            # anche se non sono cambiati!
-            if not ped2_gdf.empty:
-                save_if_not_empty(ped2_gdf, output_ped2)
-            if not ned2_gdf.empty:
-                save_if_not_empty(ned2_gdf, output_ned2)
-
-        # Per NCER la logica incrementale resta sempre valida!
-        if not ncer.empty and ncer_changed:
-            if ncer_incrementale is None:
-                ncer_incrementale = ncer.copy()
-            else:
-                ncer_incrementale = pd.concat([ncer_incrementale, ncer], ignore_index=True)
-            save_if_not_empty(ncer_incrementale, ncer_path, layer=ncer_layer_name)
-            save_if_not_empty(ncer, output_ncer)
-
-        # Aggiorna riferimenti per la prossima iterazione
-        prev_ncer = ncer.copy() if not ncer.empty else None
-        prev_ped2 = ped2_gdf.copy() if not ped2_gdf.empty else None
-        prev_ned2 = ned2_gdf.copy() if not ned2_gdf.empty else None
-
-        print(f"\n=== Risultati Iterazione {n_iter} ===")
-        print(f"CER prodotti: {len(ncer)}")
-        print(f"Totale PEB: {len(ped2_gdf)}")
-        print(f"Totale NEB: {len(ned2_gdf)}")
-
-        input_pos = output_ped2
-        input_neg = output_ned2
-        n_iter += 1
-
-    # Stampa totali finali
-    try:
-        total_ncer = total_peb = total_neb = 0
-        if os.path.exists(ncer_path):
-            total_ncer = len(gpd.read_file(ncer_path, layer=ncer_layer_name))
-        # Prendi gli ultimi non vuoti
-        if os.path.exists(output_ped2):
-            total_peb = len(gpd.read_file(output_ped2))
-        if os.path.exists(output_ned2):
-            total_neb = len(gpd.read_file(output_ned2))
-        print(f"\n=== Totali Finali ===")
-        print(f"Totale CER: {total_ncer}")
-        print(f"Totale PEB: {total_peb}")
-        print(f"Totale NEB: {total_neb}")
-    except Exception as e:
-        logger.warning(f"Errore durante il conteggio finale: {e}")
 
     logger.info(f"Ciclo completato! File NCER incrementale: {ncer_path}")
